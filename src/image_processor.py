@@ -1,55 +1,58 @@
-import matplotlib.pyplot as plt
-import seaborn as sns
-import torch
+import joblib
 import numpy as np
+from sklearn.metrics.pairwise import euclidean_distances
+import random
 
-class Visualization:
-    @staticmethod
-    def plot_images(images, titles, heading, nrows, ncols, save_path=None):
-        print("Preparing to plot images...")
-        fig, axes = plt.subplots(nrows, ncols, figsize=(15, 5))
-        fig.suptitle(heading, fontsize=16)
-        for i, ax in enumerate(axes.flatten()):
-            if i < len(images):
-                img = images[i]
-                if isinstance(img, torch.Tensor):
-                    print(f"Original tensor shape: {img.shape}")
-                    if img.ndim == 3:
-                        img = img.permute(1, 2, 0)  # Change shape from (C, H, W) to (H, W, C)
-                        print(f"Permuted tensor shape: {img.shape}")
-                    img = img.numpy()
-                elif isinstance(img, np.ndarray):
-                    print(f"Numpy array shape: {img.shape}")
-                    if img.ndim == 3 and img.shape[0] == 3:
-                        img = np.transpose(img, (1, 2, 0))  # Change shape from (C, H, W) to (H, W, C)
-                        print(f"Transposed numpy array shape: {img.shape}")
-                else:
-                    raise TypeError(f"Unexpected image type: {type(img)}")
+class ImageProcessor:
+    def __init__(self, data_path):
+        self.data_path = data_path
+        self.cifar10_images = []
 
-                img = (img - img.min()) / (img.max() - img.min())  # Normalize image data
-                img = img.astype('float32')  # Convert to a supported dtype
-                print(f"Image shape for plotting: {img.shape}, dtype: {img.dtype}")
-                ax.imshow(img)
-                ax.set_title(titles[i])
-            ax.axis('off')
-        plt.tight_layout(rect=[0, 0.03, 1, 0.85])
-        
-        if save_path:
-            print(f"Saving image to {save_path}")
-            plt.savefig(save_path)
-        plt.show()
+    def process_images_in_chunks(self, img_filenames, chunk_size):
+        for i in range(0, len(img_filenames), chunk_size):
+            chunk_filenames = img_filenames[i:i + chunk_size]
+            for img_filename in chunk_filenames:
+                print(f"Loading images from {img_filename}...")
+                with open(img_filename, 'rb') as f:
+                    loaded_images = joblib.load(f)
+                    print(f"Loaded images shape: {np.array(loaded_images).shape}")
+                    self.cifar10_images.extend(loaded_images)
 
-    @staticmethod
-    def plot_tsne(x_embedded, y_train, idx, save_path=None):
-        print("Preparing to plot t-SNE...")
-        plt.figure(figsize=(10, 8))
-        sns.scatterplot(x=x_embedded[:, 0], y=x_embedded[:, 1], hue=y_train, palette="pastel", legend="full")
-        plt.scatter(x_embedded[idx, 0], x_embedded[idx, 1], color='red', s=100, edgecolor='black', label=f'Index {idx}')
-        plt.annotate(f'Index {idx}', (x_embedded[idx, 0], x_embedded[idx, 1]), textcoords="offset points", xytext=(0, 10), ha='center')
-        plt.title('CIFAR10 - t-SNE')
-        plt.legend(loc='center left', bbox_to_anchor=(1, 0.5), fontsize='small')
-        
-        if save_path:
-            print(f"Saving t-SNE plot to {save_path}")
-            plt.savefig(save_path)
-        plt.show()
+    def find_interesting_indices(self, x_embedded, y_train, threshold=5):
+        print("Finding interesting indices...")
+        distances = euclidean_distances(x_embedded, x_embedded)
+        interesting_indices = []
+        for idx in range(len(x_embedded)):
+            neighbor_labels = y_train[np.argsort(distances[idx])[1:threshold+1]]
+            if len(set(neighbor_labels)) > 2:
+                interesting_indices.append(idx)
+        print(f"Total interesting indices found: {len(interesting_indices)}")
+        return interesting_indices
+
+    def analyze_interesting_point(self, x_embedded, y_train, cifar10_images, interesting_indices, index=-1):
+        if index == -1:
+            if not interesting_indices:
+                raise ValueError("No interesting indices found.")
+            idx = random.choice(interesting_indices)
+        elif 0 <= index < len(x_embedded):
+            idx = index
+        else:
+            raise ValueError(f"Index out of bounds. Choose a valid index between 0 and {len(x_embedded) - 1}")
+
+        distances = euclidean_distances(x_embedded, x_embedded)
+        sorted_indices = np.argsort(distances[idx])
+
+        nearest_indices = []
+        for i in sorted_indices[1:]:
+            if i < len(cifar10_images):
+                nearest_indices.append(i)
+            if len(nearest_indices) >= 5:
+                break
+
+        if len(nearest_indices) < 5:
+            raise ValueError("Not enough valid nearest neighbors found.")
+
+        if idx >= len(cifar10_images):
+            raise ValueError(f"Selected index {idx} is out of bounds for cifar10_images with length {len(cifar10_images)}.")
+
+        return idx, nearest_indices

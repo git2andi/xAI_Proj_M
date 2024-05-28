@@ -18,7 +18,7 @@ def main():
     parser = argparse.ArgumentParser(description="Process and visualize CIFAR-10 embeddings.")
     parser.add_argument("--analyze", action="store_true", help="Analyze the dataset.")
     parser.add_argument("--calculate", action="store_true", help="Calculate and save embeddings.")
-    parser.add_argument("--index", type=int, default=-1, help="Index to analyze. Use -1 for a random index.")
+    parser.add_argument("--index", type=int, help="Index to analyze. If not provided, no images will be generated.")
     parser.add_argument("--full", action="store_true", help="Use the full dataset.")
     parser.add_argument("--subsampled", action="store_true", help="Use a subsampled dataset.")
     args = parser.parse_args()
@@ -81,34 +81,40 @@ def main():
     # Load and process images
     x_embedded, y_train, cifar10_images = embedding_calculator.load_and_process_images(dataset_name, mode)
 
-    interesting_indices = image_processor.find_interesting_indices(x_embedded, y_train)
+    if args.index is not None:
+        interesting_indices = image_processor.find_interesting_indices(x_embedded, y_train)
 
-    # Determine the index to analyze
-    if args.index == -1:
-        if not interesting_indices:
-            raise ValueError("No interesting indices found.")
-        idx = random.choice(interesting_indices)
+        # Determine the index to analyze
+        if args.index == -1:
+            if not interesting_indices:
+                raise ValueError("No interesting indices found.")
+            idx = random.choice(interesting_indices)
+        else:
+            idx = args.index
+
+        print(f"Analyzing index: {idx}")
+        idx, nearest_indices = image_processor.analyze_interesting_point(x_embedded, y_train, cifar10_images, interesting_indices, idx)
+
+        # Print shapes of images to be plotted
+        for i, image in enumerate([cifar10_images[idx]] + [cifar10_images[i] for i in nearest_indices]):
+            print(f"Image {i} shape before plotting: {image.shape}")
+
+        images = [cifar10_images[idx]] + [cifar10_images[i] for i in nearest_indices]
+        titles = [f"Original: Label {y_train[idx]}"] + [f"Neighbor: Label {y_train[i]}" for i in nearest_indices]
+        heading = f'Nearest Neighbors for Index {idx} (Label {y_train[idx]})'
+
+        images_save_path = os.path.join(images_presentation_path, f'index{idx}_{mode}_images.png')
+        tsne_save_path = os.path.join(images_presentation_path, f'index{idx}_{mode}_tsne.png')
+
+        print(f"Plotting images with titles: {titles}")
+        visualization.plot_images(images, titles, heading, nrows=1, ncols=6, save_path=images_save_path)
+        print("Plotting t-SNE...")
+        visualization.plot_tsne(x_embedded, y_train, idx, save_path=tsne_save_path)
     else:
-        idx = args.index
-
-    print(f"Analyzing index: {idx}")
-    idx, nearest_indices = image_processor.analyze_interesting_point(x_embedded, y_train, cifar10_images, interesting_indices, idx)
-
-    # Print shapes of images to be plotted
-    for i, image in enumerate([cifar10_images[idx]] + [cifar10_images[i] for i in nearest_indices]):
-        print(f"Image {i} shape before plotting: {image.shape}")
-
-    images = [cifar10_images[idx]] + [cifar10_images[i] for i in nearest_indices]
-    titles = [f"Original: Label {y_train[idx]}"] + [f"Neighbor: Label {y_train[i]}" for i in nearest_indices]
-    heading = f'Nearest Neighbors for Index {idx} (Label {y_train[idx]})'
-
-    images_save_path = os.path.join(images_presentation_path, f'index{idx}_{mode}_images.png')
-    tsne_save_path = os.path.join(images_presentation_path, f'index{idx}_{mode}_tsne.png')
-
-    print(f"Plotting images with titles: {titles}")
-    visualization.plot_images(images, titles, heading, nrows=1, ncols=6, save_path=images_save_path)
-    print("Plotting t-SNE...")
-    visualization.plot_tsne(x_embedded, y_train, idx, save_path=tsne_save_path)
+        print("No index provided. Skipping image generation.")
+        # Directly plot t-SNE without highlighting a specific index
+        tsne_save_path = os.path.join(images_presentation_path, f'index_none_{mode}_tsne.png')
+        visualization.plot_tsne(x_embedded, y_train, save_path=tsne_save_path)
 
 if __name__ == "__main__":
     main()
