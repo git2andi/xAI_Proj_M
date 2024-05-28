@@ -17,8 +17,8 @@ This project is designed to process and visualize embeddings of the CIFAR-10 dat
 
 1. **Clone the Repository:**
    ```
-   git clone <repository-url>
-   cd <repository-directory>
+   git clone https://github.com/git2andi/xAI_Proj_M.git
+   cd xAI_Proj_M.git
    ```
 
 ## Usage
