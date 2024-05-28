@@ -1,46 +1,116 @@
 
-# CIFAR-10 Embedding and Visualization Project
+# xAI Project
 
-This project is designed to process and visualize embeddings of the CIFAR-10 dataset. The project includes functionalities for analyzing datasets, calculating and saving embeddings using t-SNE, and visualizing the embeddings along with their nearest neighbors in the dataset.
+This project explores the latent space of different datasets using t-SNE, evaluates the performance of a k-Nearest Neighbour (k-NN) classifier, and trains a Linear Probing model on the embeddings. The project consists of two main parts: k-NN classification and Linear Probing. The results are summarized and saved for further analysis.
 
 ## Project Structure
 
-- `src/`: Contains all source code files.
-  - `main.py`: The main script to run the project.
-  - `dataset_manager.py`: Handles dataset loading and analysis.
-  - `embedding_calculator.py`: Calculates and saves embeddings.
-  - `image_processor.py`: Processes image batches and finds interesting indices.
-  - `visualization.py`: Contains methods for visualizing images and t-SNE embeddings.
-- `data/`: Directory for storing dataset files and processed embeddings.
+```
+.
+├── database
+│   ├── cifar10
+│   │   ├── train.npz
+│   │   ├── test.npz
+│   ├── cifar100
+│   │   ├── train.npz
+│   │   ├── test.npz
+│   ├── dermamnist
+│   │   ├── train.npz
+│   │   ├── test.npz
+│   ├── breastmnist
+│       ├── train.npz
+│       ├── test.npz
+├── images
+│   ├── (generated images will be saved here)
+├── knn.py
+├── linear_probing.py
+├── requirements.txt
+├── README.md
+```
 
-## Setup and Installation
+## Prerequisites
 
-1. **Clone the Repository:**
-   ```
-   git clone https://github.com/git2andi/xAI_Proj_M.git
-   cd xAI_Proj_M.git
-   ```
+- Python 3.6 or higher
+- CUDA-enabled GPU (optional, for faster computations)
+
+## Installation
+
+1. Clone the repository:
+
+```sh
+git clone https://github.com/your-username/xAI_Project.git
+cd xAI_Project
+```
+
+2. Create a virtual environment and activate it:
+
+```sh
+python -m venv venv
+source venv/bin/activate  # On Windows use `venv\Scripts\activate`
+```
+
+3. Install the required packages:
+
+```sh
+pip install -r requirements.txt
+```
 
 ## Usage
 
-### Command Line Arguments
+### k-Nearest Neighbour (k-NN) Classification
 
-- `--analyze`: Analyze the dataset.
-- `--calculate`: Calculate and save embeddings.
-- `--index <int>`: Index to analyze. Use -1 for a random index.
-- Example: Analyze a Specific or Random Index:
-   ```
-   python src/main.py --index 42  # Specific index
-   python src/main.py --index -1  # Random index from interesting points
-   ```
+1. Run the k-NN script:
 
-## Notes
+```sh
+python knn.py --dataset cifar10
+python knn.py --dataset breastmnist
+```
 
-- Ensure that the dataset is available in the specified paths.
-- The image processing steps ensure that the images are correctly reshaped and normalized before visualization.
-- The embeddings and image batches are saved to avoid recomputation on subsequent runs.
+2. The results will be saved in a text file named according to the dataset, e.g., `cifar10_results.txt`.
 
+### Linear Probing
+
+1. Run the Linear Probing script:
+
+```sh
+python linear_probing.py --dataset cifar10
+python linear_probing.py --dataset breastmnist
+```
+
+2. The results will be saved in a text file named according to the dataset, e.g., `cifar10_linear_probing_results.txt`.
+
+## Scripts
+
+### knn.py
+
+This script performs k-Nearest Neighbour (k-NN) classification on the embeddings of the specified dataset. It uses 15-fold cross-validation to determine the best `k` value and evaluates the model on the test set.
+
+### linear_probing.py
+
+This script trains a Linear Probing model on the embeddings of the specified dataset. It evaluates different hyperparameters (learning rate, batch size, number of epochs) to find the best configuration and evaluates the model on the test set.
+
+## Requirements
+
+The `requirements.txt` file contains the list of required packages:
+
+```txt
+numpy
+torch
+scikit-learn
+matplotlib
+seaborn
+```
 
 ## License
 
-This project is licensed under the MIT License. See the LICENSE file for more details.
+This project is licensed under the MIT License. See the [LICENSE](LICENSE) file for details.
+
+## Acknowledgments
+
+- Professor's tutorial on t-SNE and k-NN.
+- PyTorch documentation and tutorials.
+- Scikit-learn documentation.
+
+---
+
+By following the instructions in this README, you should be able to set up the project environment, run the scripts, and analyze the results of k-NN classification and Linear Probing on various datasets.
