@@ -1,76 +1,55 @@
-import joblib
+import matplotlib.pyplot as plt
+import seaborn as sns
+import torch
 import numpy as np
-from sklearn.metrics.pairwise import euclidean_distances
-import random
-import os
 
-class ImageProcessor:
-    def __init__(self, data_full_path):
-        self.cifar10_images = []
-        self.data_full_path = data_full_path
+class Visualization:
+    @staticmethod
+    def plot_images(images, titles, heading, nrows, ncols, save_path=None):
+        print("Preparing to plot images...")
+        fig, axes = plt.subplots(nrows, ncols, figsize=(15, 5))
+        fig.suptitle(heading, fontsize=16)
+        for i, ax in enumerate(axes.flatten()):
+            if i < len(images):
+                img = images[i]
+                if isinstance(img, torch.Tensor):
+                    print(f"Original tensor shape: {img.shape}")
+                    if img.ndim == 3:
+                        img = img.permute(1, 2, 0)  # Change shape from (C, H, W) to (H, W, C)
+                        print(f"Permuted tensor shape: {img.shape}")
+                    img = img.numpy()
+                elif isinstance(img, np.ndarray):
+                    print(f"Numpy array shape: {img.shape}")
+                    if img.ndim == 3 and img.shape[0] == 3:
+                        img = np.transpose(img, (1, 2, 0))  # Change shape from (C, H, W) to (H, W, C)
+                        print(f"Transposed numpy array shape: {img.shape}")
+                else:
+                    raise TypeError(f"Unexpected image type: {type(img)}")
 
-    def process_images_in_chunks(self, img_filenames, chunk_size):
-        print("Processing images in chunks...")
-        for i in range(0, len(img_filenames), chunk_size):
-            chunk_filenames = img_filenames[i:i + chunk_size]
-            for img_filename in chunk_filenames:
-                print(f"Loading images from {img_filename}...")
-                with open(img_filename, 'rb') as f:
-                    self.cifar10_images.extend(joblib.load(f))
-        print(f"Total images loaded: {len(self.cifar10_images)}")
+                img = (img - img.min()) / (img.max() - img.min())  # Normalize image data
+                img = img.astype('float32')  # Convert to a supported dtype
+                print(f"Image shape for plotting: {img.shape}, dtype: {img.dtype}")
+                ax.imshow(img)
+                ax.set_title(titles[i])
+            ax.axis('off')
+        plt.tight_layout(rect=[0, 0.03, 1, 0.85])
+        
+        if save_path:
+            print(f"Saving image to {save_path}")
+            plt.savefig(save_path)
+        plt.show()
 
-    def find_interesting_indices(self, x_embedded, y_train, threshold=10):
-        distances_file = os.path.join(self.data_full_path, 'distances.pkl')
-        interesting_indices_file = os.path.join(self.data_full_path, 'interesting_indices.pkl')
-
-        if os.path.exists(distances_file) and os.path.exists(interesting_indices_file):
-            print("Loading precomputed distances and interesting indices...")
-            distances = joblib.load(distances_file)
-            interesting_indices = joblib.load(interesting_indices_file)
-        else:
-            print("Calculating distances...")
-            distances = euclidean_distances(x_embedded, x_embedded)
-            interesting_indices = []
-            print("Find interesting indicies...")
-            for idx in range(len(x_embedded)):
-                neighbor_labels = y_train[np.argsort(distances[idx])[1:threshold+1]]
-                if len(set(neighbor_labels)) > 6:  # Increase the threshold for more selectivity
-                    interesting_indices.append(idx)
-            
-            # Save the computed distances and interesting indices for future use
-            print(f"Saving distances to {distances_file} and interesting indices to {interesting_indices_file}...")
-            joblib.dump(distances, distances_file)
-            joblib.dump(interesting_indices, interesting_indices_file)
-
-        print(f"Total interesting indices found: {len(interesting_indices)}")
-        return interesting_indices
-
-    def analyze_interesting_point(self, x_embedded, y_train, cifar10_images, interesting_indices, index=-1):
-        if index == -1:
-            idx = random.choice(interesting_indices)
-            print(f"Randomly selected interesting index: {idx}")
-        elif 0 <= index < len(x_embedded):
-            idx = index
-            print(f"Selected specific index: {idx}")
-        else:
-            raise ValueError(f"Index out of bounds. Choose a valid index between 0 and {len(x_embedded) - 1}")
-
-        distances_file = os.path.join(self.data_full_path, 'distances.pkl')
-        distances = joblib.load(distances_file)
-        sorted_indices = np.argsort(distances[idx])
-
-        nearest_indices = []
-        for i in sorted_indices[1:]:
-            if i < len(cifar10_images):
-                nearest_indices.append(i)
-            if len(nearest_indices) >= 5:
-                break
-
-        if len(nearest_indices) < 5:
-            raise ValueError("Not enough valid nearest neighbors found.")
-
-        if idx >= len(cifar10_images):
-            raise ValueError(f"Selected index {idx} is out of bounds for cifar10_images with length {len(cifar10_images)}.")
-
-        print(f"Index {idx} has nearest neighbors: {nearest_indices}")
-        return idx, nearest_indices
+    @staticmethod
+    def plot_tsne(x_embedded, y_train, idx, save_path=None):
+        print("Preparing to plot t-SNE...")
+        plt.figure(figsize=(10, 8))
+        sns.scatterplot(x=x_embedded[:, 0], y=x_embedded[:, 1], hue=y_train, palette="pastel", legend="full")
+        plt.scatter(x_embedded[idx, 0], x_embedded[idx, 1], color='red', s=100, edgecolor='black', label=f'Index {idx}')
+        plt.annotate(f'Index {idx}', (x_embedded[idx, 0], x_embedded[idx, 1]), textcoords="offset points", xytext=(0, 10), ha='center')
+        plt.title('CIFAR10 - t-SNE')
+        plt.legend(loc='center left', bbox_to_anchor=(1, 0.5), fontsize='small')
+        
+        if save_path:
+            print(f"Saving t-SNE plot to {save_path}")
+            plt.savefig(save_path)
+        plt.show()

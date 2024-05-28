@@ -6,27 +6,32 @@ from torch.utils.data import DataLoader, TensorDataset
 from sklearn.manifold import TSNE
 
 class EmbeddingCalculator:
-    def __init__(self, root_path, data_full_path):
+    def __init__(self, root_path, data_path):
         self.root_path = root_path
-        self.data_full_path = data_full_path
-        os.makedirs(self.data_full_path, exist_ok=True)
+        self.data_path = data_path
+        os.makedirs(self.data_path, exist_ok=True)
 
-    def calculate_and_save_embeddings_full(self, dataset_name, train_c10):
-        pkl_filename = os.path.join(self.data_full_path, f'x_embedded_{dataset_name}.pkl')
-        img_list_filename = os.path.join(self.data_full_path, f'cifar10_image_batches_{dataset_name}.pkl')
+    def calculate_and_save_embeddings(self, dataset_name, train_c10, mode):
+        pkl_filename = os.path.join(self.data_path, f'x_embedded_{dataset_name}.pkl')
+        img_list_filename = os.path.join(self.data_path, f'cifar10_image_batches_{dataset_name}.pkl')
 
         if os.path.exists(pkl_filename) and os.path.exists(img_list_filename):
-            print(f"Embeddings and image batches already exist for {dataset_name}. Skipping calculation.")
+            print(f"Embeddings and image batches already exist for {dataset_name} ({mode}). Skipping calculation.")
             return
         
         print("Loading embeddings and labels from dataset...")
         db_train = np.load(os.path.join(self.root_path, dataset_name, 'train.npz'))
         X_train, y_train = db_train['embeddings'], db_train['labels'].reshape(-1,)
 
+        if mode == "subsampled":
+            X_train = X_train[::10]
+            y_train = y_train[::10]
+            train_c10 = [train_c10[i] for i in range(len(train_c10)) if i % 10 == 0]
+
         # Check if the sizes match
         if len(X_train) != len(train_c10):
-            raise ValueError(f"Mismatch between full embeddings ({len(X_train)}) and images ({len(train_c10)}).")
-        print(f"Full embeddings and images have matching lengths: {len(X_train)}")
+            raise ValueError(f"Mismatch between embeddings ({len(X_train)}) and images ({len(train_c10)}) for {mode} mode.")
+        print(f"{mode.capitalize()} embeddings and images have matching lengths: {len(X_train)}")
 
         # Convert to PyTorch tensor
         X_train = torch.tensor(X_train)
@@ -43,7 +48,7 @@ class EmbeddingCalculator:
         for i, (embeddings, labels) in enumerate(dataloader):
             # Perform t-SNE on the current batch of embeddings
             print(f"Processing batch {i + 1}/{len(dataloader)}...")
-            batch_embedded = TSNE(n_components=2, learning_rate='auto', init='random', perplexity=3).fit_transform(embeddings.numpy())
+            batch_embedded = TSNE(n_components=2, learning_rate='auto', init='random', perplexity=30).fit_transform(embeddings.numpy())
             x_embedded_list.append(batch_embedded)
             labels_list.append(labels.numpy())
 
@@ -55,9 +60,10 @@ class EmbeddingCalculator:
                     print(f"Index {index} out of range for train_c10 with length {len(train_c10)}")
                     break
                 image, _ = train_c10[index]
+                print(f"Image shape before saving: {image.shape}")
                 image_batch.append(image.numpy())
             
-            batch_filename = os.path.join(self.data_full_path, f'cifar10_images_batch_{i}.pkl')
+            batch_filename = os.path.join(self.data_path, f'cifar10_images_batch_{i}.pkl')
             print(f"Saving image batch {i} to {batch_filename}...")
             with open(batch_filename, 'wb') as f:
                 joblib.dump(np.array(image_batch), f, compress=3, protocol=4)
@@ -74,16 +80,16 @@ class EmbeddingCalculator:
             joblib.dump(data_to_save, f, compress=3, protocol=4)
 
         # Save the list of image batch filenames
-        img_list_filename = os.path.join(self.data_full_path, f'cifar10_image_batches_{dataset_name}.pkl')
+        img_list_filename = os.path.join(self.data_path, f'cifar10_image_batches_{dataset_name}.pkl')
         with open(img_list_filename, 'wb') as f:
             joblib.dump(img_filenames, f, compress=3, protocol=4)
 
-        print(f"Files saved to {self.data_full_path}")
+        print(f"Files saved to {self.data_path}")
 
-    def load_and_process_images(self, dataset_name):
+    def load_and_process_images(self, dataset_name, mode):
         print("Loading embeddings and labels...")
-        x_embedded, y_train = joblib.load(os.path.join(self.data_full_path, f'x_embedded_{dataset_name}.pkl'))
-        img_list_filename = os.path.join(self.data_full_path, f'cifar10_image_batches_{dataset_name}.pkl')
+        x_embedded, y_train = joblib.load(os.path.join(self.data_path, f'x_embedded_{dataset_name}.pkl'))
+        img_list_filename = os.path.join(self.data_path, f'cifar10_image_batches_{dataset_name}.pkl')
 
         # Align x_embedded and y_train
         if x_embedded.shape[0] != y_train.shape[0]:
@@ -106,12 +112,13 @@ class EmbeddingCalculator:
             for i in range(0, len(img_filenames), chunk_size):
                 chunk_filenames = img_filenames[i:i + chunk_size]
                 for img_filename in chunk_filenames:
-                    print(f"Add {img_filename} to combine Batches...")
+                    print(f"Extend new images from {img_filename}...")
                     with open(img_filename, 'rb') as f:
                         loaded_images = joblib.load(f)
+                        print(f"Loaded images shape: {np.array(loaded_images).shape}")
                         cifar10_images.extend(loaded_images)
 
         # Process the images in chunks
-        process_images_in_chunks(img_filenames, chunk_size=1)
+        process_images_in_chunks(img_filenames, chunk_size=3)
 
         return x_embedded, y_train, cifar10_images
