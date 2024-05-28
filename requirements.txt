@@ -1,7 +1,8 @@
-numpy
-matplotlib
-seaborn
 torch
 torchvision
-scikit-learn
+matplotlib
+seaborn
+numpy
 joblib
+scikit-learn
+medmnist

@@ -6,30 +6,34 @@ import random
 class ImageProcessor:
     def __init__(self, data_path):
         self.data_path = data_path
-        self.cifar10_images = []
+        self.images = []
 
     def process_images_in_chunks(self, img_filenames, chunk_size):
+        """Load images in chunks to manage memory usage."""
         for i in range(0, len(img_filenames), chunk_size):
             chunk_filenames = img_filenames[i:i + chunk_size]
             for img_filename in chunk_filenames:
-                print(f"Loading images from {img_filename}...")
-                with open(img_filename, 'rb') as f:
-                    loaded_images = joblib.load(f)
-                    print(f"Loaded images shape: {np.array(loaded_images).shape}")
-                    self.cifar10_images.extend(loaded_images)
+                loaded_images = joblib.load(img_filename)
+                self.images.extend(loaded_images)
 
-    def find_interesting_indices(self, x_embedded, y_train, threshold=5):
-        print("Finding interesting indices...")
+    def find_interesting_indices(self, x_embedded, y_train):
+        """Find indices of images with diverse neighbors."""
         distances = euclidean_distances(x_embedded, x_embedded)
         interesting_indices = []
-        for idx in range(len(x_embedded)):
-            neighbor_labels = y_train[np.argsort(distances[idx])[1:threshold+1]]
-            if len(set(neighbor_labels)) > 2:
-                interesting_indices.append(idx)
-        print(f"Total interesting indices found: {len(interesting_indices)}")
+
+        for threshold in range(5, 0, -1):
+            for idx in range(len(x_embedded)):
+                neighbor_labels = y_train[np.argsort(distances[idx])[1:]]
+                unique_labels = set(neighbor_labels[:threshold])
+                if len(unique_labels) >= threshold:
+                    interesting_indices.append(idx)
+            if len(interesting_indices) >= 10:
+                break
+
         return interesting_indices
 
-    def analyze_interesting_point(self, x_embedded, y_train, cifar10_images, interesting_indices, index=-1):
+    def analyze_interesting_point(self, x_embedded, y_train, images, interesting_indices, index=-1):
+        """Analyze a specific point and its nearest neighbors."""
         if index == -1:
             if not interesting_indices:
                 raise ValueError("No interesting indices found.")
@@ -43,16 +47,16 @@ class ImageProcessor:
         sorted_indices = np.argsort(distances[idx])
 
         nearest_indices = []
-        for i in sorted_indices[1:]:
-            if i < len(cifar10_images):
-                nearest_indices.append(i)
-            if len(nearest_indices) >= 5:
+        for threshold in range(5, 0, -1):
+            nearest_indices = [i for i in sorted_indices[1:] if i < len(images) and len(set(y_train[np.argsort(distances[i])[1:threshold+1]])) >= threshold]
+            if len(nearest_indices) >= 10:
+                print(f"Number of nearest points found: {len(nearest_indices)}")
                 break
 
         if len(nearest_indices) < 5:
             raise ValueError("Not enough valid nearest neighbors found.")
 
-        if idx >= len(cifar10_images):
-            raise ValueError(f"Selected index {idx} is out of bounds for cifar10_images with length {len(cifar10_images)}.")
+        if idx >= len(images):
+            raise ValueError(f"Selected index {idx} is out of bounds for images with length {len(images)}.")
 
         return idx, nearest_indices
