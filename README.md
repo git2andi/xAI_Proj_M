@@ -39,6 +39,8 @@ python main.py --dataset cifar100
 python main.py --dataset dermamnist
 python main.py --dataset breastmnist
 
+python main.py --dataset cifar10 --full         # Work with the full dataset
+python main.py --dataset cifar10 --subsampled   # Work with every 10th file 
 ```
 
 ### k-Nearest Neighbour (k-NN) Classification
