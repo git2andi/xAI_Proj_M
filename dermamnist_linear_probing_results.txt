@@ -1,55 +1,55 @@
 Training with lr=0.001, batch_size=16, epochs=20
-Accuracy: 0.98
+Accuracy: 0.83
 Training with lr=0.001, batch_size=16, epochs=30
-Accuracy: 0.98
+Accuracy: 0.83
 Training with lr=0.001, batch_size=16, epochs=40
-Accuracy: 0.98
+Accuracy: 0.83
 Training with lr=0.001, batch_size=32, epochs=20
-Accuracy: 0.98
+Accuracy: 0.84
 Training with lr=0.001, batch_size=32, epochs=30
-Accuracy: 0.98
+Accuracy: 0.83
 Training with lr=0.001, batch_size=32, epochs=40
-Accuracy: 0.98
+Accuracy: 0.84
 Training with lr=0.001, batch_size=64, epochs=20
-Accuracy: 0.98
+Accuracy: 0.83
 Training with lr=0.001, batch_size=64, epochs=30
-Accuracy: 0.98
+Accuracy: 0.83
 Training with lr=0.001, batch_size=64, epochs=40
-Accuracy: 0.98
+Accuracy: 0.84
 Training with lr=0.005, batch_size=16, epochs=20
-Accuracy: 0.98
+Accuracy: 0.80
 Training with lr=0.005, batch_size=16, epochs=30
-Accuracy: 0.98
+Accuracy: 0.81
 Training with lr=0.005, batch_size=16, epochs=40
-Accuracy: 0.98
+Accuracy: 0.82
 Training with lr=0.005, batch_size=32, epochs=20
-Accuracy: 0.98
+Accuracy: 0.78
 Training with lr=0.005, batch_size=32, epochs=30
-Accuracy: 0.98
+Accuracy: 0.77
 Training with lr=0.005, batch_size=32, epochs=40
-Accuracy: 0.98
+Accuracy: 0.78
 Training with lr=0.005, batch_size=64, epochs=20
-Accuracy: 0.98
+Accuracy: 0.81
 Training with lr=0.005, batch_size=64, epochs=30
-Accuracy: 0.98
+Accuracy: 0.81
 Training with lr=0.005, batch_size=64, epochs=40
-Accuracy: 0.98
+Accuracy: 0.83
 Training with lr=0.0001, batch_size=16, epochs=20
-Accuracy: 0.99
+Accuracy: 0.81
 Training with lr=0.0001, batch_size=16, epochs=30
-Accuracy: 0.99
+Accuracy: 0.82
 Training with lr=0.0001, batch_size=16, epochs=40
-Accuracy: 0.99
+Accuracy: 0.83
 Training with lr=0.0001, batch_size=32, epochs=20
-Accuracy: 0.99
+Accuracy: 0.81
 Training with lr=0.0001, batch_size=32, epochs=30
-Accuracy: 0.99
+Accuracy: 0.81
 Training with lr=0.0001, batch_size=32, epochs=40
-Accuracy: 0.99
+Accuracy: 0.82
 Training with lr=0.0001, batch_size=64, epochs=20
-Accuracy: 0.99
+Accuracy: 0.79
 Training with lr=0.0001, batch_size=64, epochs=30
-Accuracy: 0.99
+Accuracy: 0.80
 Training with lr=0.0001, batch_size=64, epochs=40
-Accuracy: 0.99
-Best Hyperparameters: {'lr': 0.0001, 'batch_size': 64, 'epochs': 20} with accuracy: 0.9874
+Accuracy: 0.81
+Best Hyperparameters: {'lr': 0.001, 'batch_size': 64, 'epochs': 40} with accuracy: 0.8409

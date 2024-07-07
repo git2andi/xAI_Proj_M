@@ -1,0 +1,18 @@
+
+Evaluating 11 values of k:
+k=1: Validation Accuracy = 0.8787
+k=3: Validation Accuracy = 0.8842
+k=5: Validation Accuracy = 0.8962
+k=7: Validation Accuracy = 0.8976
+k=9: Validation Accuracy = 0.8991
+k=11: Validation Accuracy = 0.8978
+k=13: Validation Accuracy = 0.8985
+k=15: Validation Accuracy = 0.8993
+k=20: Validation Accuracy = 0.8989
+k=30: Validation Accuracy = 0.8982
+k=40: Validation Accuracy = 0.8948
+
+Best k: 15 with validation accuracy: 0.8993
+Final kNN Accuracy on test set: 0.8950
+Misclassified Indices: [  7  49  51  63  65  87  88  92  99 100]
+Total Misclassified: 1050
