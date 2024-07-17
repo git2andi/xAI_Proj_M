@@ -223,7 +223,12 @@ def main_forest_knn(dataset_name):
                     X_val_projected = apply_projections_to_test(X_val_norm, transformers)
                     X_test_projected = apply_projections_to_test(X_test_norm, transformers)
                     
-                    classifiers, train_accuracies, val_accuracies = train_knn_models(X_projected_samples, y_samples, X_val_projected, y_val, k=k, device='cuda')
+                    try:
+                        classifiers, train_accuracies, val_accuracies = train_knn_models(X_projected_samples, y_samples, X_val_projected, y_val, k=k, device='cuda')
+                    except torch.cuda.OutOfMemoryError:
+                        print("CUDA out of memory. Switching to CPU.")
+                        classifiers, train_accuracies, val_accuracies = train_knn_models(X_projected_samples, y_samples, X_val_projected, y_val, k=k, device='cpu')
+                    
                     evaluate_and_save_results(classifiers, X_test_projected, y_test, method, n_components, k, dataset_name, output_file, train_acc_file, train_accuracies, weights=None)
                     
                     boosted_knn_models, boosted_weights = train_boosted_knn(X_train_norm, y_train, X_val_norm, y_val, transformers, k=k)
