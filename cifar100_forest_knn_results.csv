@@ -1,5 +1,0 @@
-method,n_components,k,accuracy
-random,50,5,0.8681
-random,100,5,0.8884
-pca,50,5,0.514
-pca,100,5,0.45
