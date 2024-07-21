@@ -1,0 +1,37 @@
+random = None
+Evaluating 11 values of k:
+k=1: Validation Accuracy = 0.9870
+k=3: Validation Accuracy = 0.9877
+k=5: Validation Accuracy = 0.9885
+k=7: Validation Accuracy = 0.9886
+k=9: Validation Accuracy = 0.9898
+k=11: Validation Accuracy = 0.9892
+k=13: Validation Accuracy = 0.9892
+k=15: Validation Accuracy = 0.9886
+k=20: Validation Accuracy = 0.9878
+k=30: Validation Accuracy = 0.9881
+k=40: Validation Accuracy = 0.9874
+
+Best k: 9 with validation accuracy: 0.9898
+Final kNN Accuracy on test set: 0.9868
+Final kNN Precision on test set: 0.9869
+Final kNN Recall on test set: 0.9868
+Final kNN F1 Score on test set: 0.9868
+Misclassified Indices: [  37   59  151  226  275  551  598  799  810 1095]
+Total Misclassified: 132
+Validation accuracy with hyperparams {'lr': 0.001, 'batch_size': 32, 'epochs': 20}: 0.9724
+Validation accuracy with hyperparams {'lr': 0.001, 'batch_size': 32, 'epochs': 40}: 0.9829
+Validation accuracy with hyperparams {'lr': 0.001, 'batch_size': 64, 'epochs': 20}: 0.9712
+Validation accuracy with hyperparams {'lr': 0.001, 'batch_size': 64, 'epochs': 40}: 0.9834
+Validation accuracy with hyperparams {'lr': 0.005, 'batch_size': 32, 'epochs': 20}: 0.9868
+Validation accuracy with hyperparams {'lr': 0.005, 'batch_size': 32, 'epochs': 40}: 0.9881
+Validation accuracy with hyperparams {'lr': 0.005, 'batch_size': 64, 'epochs': 20}: 0.9876
+Validation accuracy with hyperparams {'lr': 0.005, 'batch_size': 64, 'epochs': 40}: 0.9884
+
+Best Hyperparameters: {'lr': 0.005, 'batch_size': 64, 'epochs': 40} with validation accuracy: 0.9884
+Test accuracy: 0.9853
+Test precision: 0.9853
+Test recall: 0.9853
+Test F1 score: 0.9853
+Total misclassified: 147
+Misclassified Indices: [ 46  59  86 151 200 226 275 305 727 810]
