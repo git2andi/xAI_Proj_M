@@ -1,19 +1,22 @@
 import os
 import numpy as np
 import torch
+from torch import nn
 import argparse
-from sklearn.model_selection import train_test_split, GridSearchCV
-from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_score
-from sklearn.decomposition import PCA
-from sklearn.random_projection import GaussianRandomProjection
 from sklearn.utils import resample
+from sklearn.model_selection import train_test_split, GridSearchCV
 from sklearn.neighbors import KNeighborsClassifier
+from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_score
+from sklearn.decomposition import PCA as SklearnPCA
+from sklearn.random_projection import GaussianRandomProjection
 from sklearn.ensemble import GradientBoostingClassifier
 import pandas as pd
 import itertools
 import logging
 import random
 from joblib import Parallel, delayed
+
+
 
 root_path = "./database"
 
@@ -74,43 +77,60 @@ def create_bootstrap_sample(X, y, random_state=None):
     """
     return resample(X, y, random_state=random_state)
 
+class TorchPCA(nn.Module):
+    def __init__(self, n_components):
+        super(TorchPCA, self).__init__()
+        self.n_components = n_components
+
+    def fit(self, X):
+        X_mean = torch.mean(X, dim=0)
+        X_centered = X - X_mean
+        U, S, V = torch.svd(X_centered)
+        self.components_ = V[:, :self.n_components]
+
+    def transform(self, X):
+        X_mean = torch.mean(X, dim=0)
+        X_centered = X - X_mean
+        return torch.mm(X_centered, self.components_)
+
 def apply_projection(X, method='random', n_components=50, random_state=None):
     """
     Apply dimensionality reduction to the data.
     """
     if method == 'random':
         transformer = GaussianRandomProjection(n_components=n_components, random_state=random_state)
+        X_projected = transformer.fit_transform(X)
     elif method == 'pca':
-        transformer = PCA(n_components=n_components, random_state=random_state)
-    X_projected = transformer.fit_transform(X)
+        transformer = TorchPCA(n_components=n_components)
+        X_tensor = torch.tensor(X, dtype=torch.float32).cuda()
+        transformer.fit(X_tensor)
+        X_projected = transformer.transform(X_tensor).cpu().numpy()
     return X_projected, transformer
 
 def apply_projection_to_test(X_test, transformer):
     """
     Apply the same dimensionality reduction to the test data.
     """
-    return transformer.transform(X_test)
+    if isinstance(transformer, TorchPCA):
+        X_tensor = torch.tensor(X_test, dtype=torch.float32).cuda()
+        X_projected = transformer.transform(X_tensor).cpu().numpy()
+    else:
+        X_projected = transformer.transform(X_test)
+    return X_projected
 
-class CustomKNN:
+class CustomKNN_GPU:
     """
     Custom k-Nearest Neighbors (kNN) classifier with GPU support.
     """
-    def __init__(self, k=5, device='cuda'):
+    def __init__(self, k=5):
         self.k = k
-        self.device = device
 
     def fit(self, X, y):
-        """
-        Fit the kNN model using the training data.
-        """
-        self.X_train = torch.tensor(X, device=self.device)
-        self.y_train = torch.tensor(y, device=self.device)
+        self.X_train = torch.tensor(X, dtype=torch.float32).cuda()
+        self.y_train = torch.tensor(y, dtype=torch.int64).cuda()
 
     def predict(self, X, batch_size=1000):
-        """
-        Predict the labels for the input data using kNN.
-        """
-        X = torch.tensor(X, device=self.device)
+        X = torch.tensor(X, dtype=torch.float32).cuda()
         num_samples = X.shape[0]
         predictions = []
         
