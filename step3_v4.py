@@ -190,6 +190,23 @@ def evaluate_and_save_results(classifiers, X_test_samples, y_test, method, n_com
     df.to_csv(output_file, mode='a', header=not os.path.exists(output_file), index=False)
     logger.info(f"Results saved to {output_file}")
 
+def train_and_evaluate_classifier(X_train, y_train, X_test, method, n_components, i):
+    """
+    Train and evaluate a single classifier for parallel processing.
+    """
+    X_sample, y_sample = create_bootstrap_sample(X_train, y_train, random_state=i)
+    X_projected, transformer = apply_projection(X_sample, method=method, n_components=n_components, random_state=i)
+    X_test_projected = apply_projection_to_test(X_test, transformer)
+
+    logger.info(f"Bootstrap sample {i} shape: {X_sample.shape}, Projected shape: {X_projected.shape}")
+    
+    # Perform grid search for the best kNN parameters
+    best_knn, best_params = grid_search_knn(X_projected, y_sample)
+    # Train boosted kNN model
+    boosted_knn = train_boosted_knn(X_projected, y_sample)
+    
+    return boosted_knn, X_test_projected, best_params
+
 def main_forest_knn(dataset_name):
     """
     Main function to run Forest-kNN.
@@ -209,24 +226,16 @@ def main_forest_knn(dataset_name):
     
     for method, n_components, n_classifiers in itertools.product(methods, n_components_list, n_classifiers_list):
         logger.info(f"\nStarting evaluation for method={method}, n_components={n_components}, n_classifiers={n_classifiers}...")
-        classifiers = []
-        X_test_samples = []
         
-        for i in range(n_classifiers):
-            X_sample, y_sample = create_bootstrap_sample(X_train, y_train, random_state=i)
-            X_projected, transformer = apply_projection(X_sample, method=method, n_components=n_components, random_state=i)
-            X_test_projected = apply_projection_to_test(X_test, transformer)
-            
-            logger.info(f"Bootstrap sample {i} shape: {X_sample.shape}, Projected shape: {X_projected.shape}")
-            
-            # Perform grid search for the best kNN parameters
-            best_knn, best_params = grid_search_knn(X_projected, y_sample)
-            # Train boosted kNN model
-            boosted_knn = train_boosted_knn(X_projected, y_sample)
-            classifiers.append(boosted_knn)
-            X_test_samples.append(X_test_projected)
+        results = Parallel(n_jobs=-1)(
+            delayed(train_and_evaluate_classifier)(
+                X_train, y_train, X_test, method, n_components, i
+            ) for i in range(n_classifiers)
+        )
+
+        classifiers, X_test_samples, best_params_list = zip(*results)
         
-        evaluate_and_save_results(classifiers, X_test_samples, y_test, method, n_components, None, n_classifiers, output_file, best_params)
+        evaluate_and_save_results(classifiers, X_test_samples, y_test, method, n_components, None, n_classifiers, output_file, best_params_list[0])
         logger.info(f"Evaluation completed for method={method}, n_components={n_components}, n_classifiers={n_classifiers}")
 
 if __name__ == "__main__":
