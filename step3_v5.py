@@ -80,36 +80,36 @@ class ForestKNN:
         """
         if self.distance_metric == 'euclidean':
             return torch.cdist(X, X_train, p=2)
-        #elif self.distance_metric == 'manhattan':
-        #    return torch.cdist(X, X_train, p=1)
-        #elif self.distance_metric == 'cosine':
-        #    X_norm = torch.nn.functional.normalize(X, p=2, dim=1)
-        #    X_train_norm = torch.nn.functional.normalize(X_train, p=2, dim=1)
-        #    return 1 - torch.mm(X_norm, X_train_norm.T)
+        elif self.distance_metric == 'manhattan':
+            return torch.cdist(X, X_train, p=1)
+        elif self.distance_metric == 'cosine':
+            X_norm = torch.nn.functional.normalize(X, p=2, dim=1)
+            X_train_norm = torch.nn.functional.normalize(X_train, p=2, dim=1)
+            return 1 - torch.mm(X_norm, X_train_norm.T)
         elif self.distance_metric == 'chebyshev':
             return torch.cdist(X, X_train, p=float('inf'))
-        #elif self.distance_metric == 'minkowski':
-        #    p = 3
-        #    return torch.cdist(X, X_train, p=p)
+        elif self.distance_metric == 'minkowski':
+            p = 3
+            return torch.cdist(X, X_train, p=p)
         elif self.distance_metric == 'mahalanobis':
             # For simplicity, assuming identity matrix as inverse covariance matrix
             VI = torch.eye(X.shape[1], device=self.device)
             delta = X.unsqueeze(1) - X_train.unsqueeze(0)
             return torch.sqrt(torch.sum(delta @ VI * delta, dim=-1))
-        #elif self.distance_metric == 'hamming':
-        #    return (X.unsqueeze(1) != X_train.unsqueeze(0)).float().mean(dim=2)
+        elif self.distance_metric == 'hamming':
+            return (X.unsqueeze(1) != X_train.unsqueeze(0)).float().mean(dim=2)
         elif self.distance_metric == 'canberra':
             delta = torch.abs(X.unsqueeze(1) - X_train.unsqueeze(0))
             sum_vals = torch.abs(X.unsqueeze(1)) + torch.abs(X_train.unsqueeze(0))
             return torch.sum(delta / sum_vals, dim=2)
-        #elif self.distance_metric == 'braycurtis':
-        #    num = torch.sum(torch.abs(X.unsqueeze(1) - X_train.unsqueeze(0)), dim=2)
-        #    denom = torch.sum(torch.abs(X.unsqueeze(1) + X_train.unsqueeze(0)), dim=2)
-        #    return num / denom
-        #elif self.distance_metric == 'jaccard':
-        #    intersection = torch.min(X.unsqueeze(1), X_train.unsqueeze(0)).sum(dim=2)
-        #    union = torch.max(X.unsqueeze(1), X_train.unsqueeze(0)).sum(dim=2)
-        #    return 1 - intersection / union
+        elif self.distance_metric == 'braycurtis':
+            num = torch.sum(torch.abs(X.unsqueeze(1) - X_train.unsqueeze(0)), dim=2)
+            denom = torch.sum(torch.abs(X.unsqueeze(1) + X_train.unsqueeze(0)), dim=2)
+            return num / denom
+        elif self.distance_metric == 'jaccard':
+            intersection = torch.min(X.unsqueeze(1), X_train.unsqueeze(0)).sum(dim=2)
+            union = torch.max(X.unsqueeze(1), X_train.unsqueeze(0)).sum(dim=2)
+            return 1 - intersection / union
         else:
             raise ValueError(f"Unknown distance metric: {self.distance_metric}")
 
@@ -181,7 +181,7 @@ def main(dataset_name):
     k_values_list = [[1, 3, 5], [3, 5, 7], [5, 7, 9]]
     sample_size_list = [0.6, 0.8, 1.0]
     feature_size_list = [0.6, 0.8, 1.0]
-    distance_metric_list = ['euclidean', 'chebyshev', 'mahalanobis', 'canberra'] #manhattan, cosine minkowski hamming braycurtis jaccard
+    distance_metric_list = ['euclidean', 'chebyshev', 'mahalanobis', 'canberra'] # 'manhattan', 'cosine',  'minkowski'.  'hamming',  'braycurtis', 'jaccard'
 
 
     best_val_accuracy = 0

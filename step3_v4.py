@@ -150,12 +150,19 @@ def main(dataset_name):
     X_train, y_train, X_val, y_val, X_test, y_test = load_embeddings_and_labels(dataset_name, root_path)
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
-    # Define alternative values for parameters
-    num_trees_list = [5, 10, 20, 25]
-    k_list = [3, 5, 10, 15]
-    sample_size_list = [0.6, 0.8, 1.0]
-    feature_size_list = [0.6, 0.8, 1.0]
-    distance_metric_list = ['euclidean', 'manhattan', 'cosine', 'chebyshev', 'minkowski', 'mahalanobis', 'hamming', 'canberra', 'braycurtis', 'jaccard']
+    # derma and breast run fast with full config
+    #num_trees_list = [5, 10, 20, 25]
+    #k_list = [3, 5, 10, 15]
+    #sample_size_list = [0.6, 0.8, 1.0]
+    #feature_size_list = [0.6, 0.8, 1.0]
+    #distance_metric_list = ['euclidean', 'manhattan', 'cosine', 'chebyshev', 'minkowski', 'mahalanobis', 'hamming', 'canberra', 'braycurtis', 'jaccard']
+    
+    # for Cifar use reduced parameters
+    num_trees_list = [5, 10]
+    k_list = [3, 10, 15]
+    sample_size_list = [0.6, 0.8]
+    feature_size_list = [0.6, 0.8]
+    distance_metric_list = ['euclidean', 'cosine'] 
 
 
     best_val_accuracy = 0
