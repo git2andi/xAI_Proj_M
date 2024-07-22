@@ -1,22 +1,25 @@
 import os
 import numpy as np
 import torch
-from torch import nn
 import argparse
-from sklearn.utils import resample
-from sklearn.model_selection import train_test_split, GridSearchCV
-from sklearn.neighbors import KNeighborsClassifier
+from sklearn.model_selection import train_test_split
 from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_score
-from sklearn.decomposition import PCA as SklearnPCA
+from sklearn.decomposition import PCA
 from sklearn.random_projection import GaussianRandomProjection
+from sklearn.utils import resample
+from sklearn.neighbors import KNeighborsClassifier
 from sklearn.ensemble import GradientBoostingClassifier
 import pandas as pd
 import itertools
 import logging
 import random
 from joblib import Parallel, delayed
+from bayes_opt import BayesianOptimization
+from imblearn.over_sampling import SMOTE
+from sklearn.model_selection import StratifiedShuffleSplit
 
 
+# Includes Boosting which is wrong lol
 
 root_path = "./database"
 
@@ -29,22 +32,14 @@ def setup_logging(dataset_name):
     
     if not logger.hasHandlers():
         logger.setLevel(logging.DEBUG)
-
-        # Create handlers
         console_handler = logging.StreamHandler()
         file_handler = logging.FileHandler(f'{dataset_name}_forest_knn.log')
-
-        # Set log levels for handlers
         console_handler.setLevel(logging.INFO)
         file_handler.setLevel(logging.DEBUG)
-
-        # Create formatters and add them to handlers
         console_formatter = logging.Formatter('%(asctime)s - %(levelname)s - %(message)s')
         file_formatter = logging.Formatter('%(asctime)s - %(levelname)s - %(message)s')
         console_handler.setFormatter(console_formatter)
         file_handler.setFormatter(file_formatter)
-
-        # Add handlers to the logger
         logger.addHandler(console_handler)
         logger.addHandler(file_handler)
 
@@ -71,27 +66,38 @@ def load_embeddings_and_labels(dataset_name, root_path):
     logger.info(f"Loaded dataset {dataset_name} with shapes - X_train: {X_train.shape}, X_val: {X_val.shape}, X_test: {X_test.shape}")
     return X_train, y_train, X_val, y_val, X_test, y_test
 
-def create_bootstrap_sample(X, y, random_state=None):
+def create_bootstrap_sample(X, y, method='bootstrap', random_state=None):
     """
-    Create a bootstrap sample from the training data.
+    Create a sample from the training data using various sampling methods.
     """
-    return resample(X, y, random_state=random_state)
+    if method == 'bootstrap':
+        return resample(X, y, random_state=random_state)
+    elif method == 'stratified':
+        sss = StratifiedShuffleSplit(n_splits=1, test_size=0.5, random_state=random_state)
+        for train_index, test_index in sss.split(X, y):
+            X_resampled, y_resampled = X[train_index], y[train_index]
+        return X_resampled, y_resampled
+    elif method == 'balanced':
+        class_counts = np.bincount(y)
+        max_count = np.max(class_counts)
+        X_resampled, y_resampled = [], []
+        for class_idx in range(len(class_counts)):
+            class_samples = X[y == class_idx]
+            resampled_class_samples = resample(class_samples, n_samples=max_count, random_state=random_state)
+            X_resampled.append(resampled_class_samples)
+            y_resampled.append(np.full(max_count, class_idx))
+        return np.vstack(X_resampled), np.hstack(y_resampled)
+    elif method == 'smote':
+        smote = SMOTE(random_state=random_state)
+        X_resampled, y_resampled = smote.fit_resample(X, y)
+        return X_resampled, y_resampled
+    elif method == 'oob':
+        bootstrap_samples = resample(np.arange(len(X)), random_state=random_state)
+        oob_samples = np.setdiff1d(np.arange(len(X)), bootstrap_samples)
+        return X[bootstrap_samples], y[bootstrap_samples], X[oob_samples], y[oob_samples]
+    else:
+        raise ValueError("Unknown sampling method.")
 
-class TorchPCA(nn.Module):
-    def __init__(self, n_components):
-        super(TorchPCA, self).__init__()
-        self.n_components = n_components
-
-    def fit(self, X):
-        X_mean = torch.mean(X, dim=0)
-        X_centered = X - X_mean
-        U, S, V = torch.svd(X_centered)
-        self.components_ = V[:, :self.n_components]
-
-    def transform(self, X):
-        X_mean = torch.mean(X, dim=0)
-        X_centered = X - X_mean
-        return torch.mm(X_centered, self.components_)
 
 def apply_projection(X, method='random', n_components=50, random_state=None):
     """
@@ -99,38 +105,37 @@ def apply_projection(X, method='random', n_components=50, random_state=None):
     """
     if method == 'random':
         transformer = GaussianRandomProjection(n_components=n_components, random_state=random_state)
-        X_projected = transformer.fit_transform(X)
     elif method == 'pca':
-        transformer = TorchPCA(n_components=n_components)
-        X_tensor = torch.tensor(X, dtype=torch.float32).cuda()
-        transformer.fit(X_tensor)
-        X_projected = transformer.transform(X_tensor).cpu().numpy()
+        transformer = PCA(n_components=n_components, random_state=random_state)
+    X_projected = transformer.fit_transform(X)
     return X_projected, transformer
 
 def apply_projection_to_test(X_test, transformer):
     """
     Apply the same dimensionality reduction to the test data.
     """
-    if isinstance(transformer, TorchPCA):
-        X_tensor = torch.tensor(X_test, dtype=torch.float32).cuda()
-        X_projected = transformer.transform(X_tensor).cpu().numpy()
-    else:
-        X_projected = transformer.transform(X_test)
-    return X_projected
+    return transformer.transform(X_test)
 
-class CustomKNN_GPU:
+class CustomKNN:
     """
     Custom k-Nearest Neighbors (kNN) classifier with GPU support.
     """
-    def __init__(self, k=5):
+    def __init__(self, k=5, device='cuda'):
         self.k = k
+        self.device = device
 
     def fit(self, X, y):
-        self.X_train = torch.tensor(X, dtype=torch.float32).cuda()
-        self.y_train = torch.tensor(y, dtype=torch.int64).cuda()
+        """
+        Fit the kNN model using the training data.
+        """
+        self.X_train = torch.tensor(X, device=self.device)
+        self.y_train = torch.tensor(y, device=self.device)
 
     def predict(self, X, batch_size=1000):
-        X = torch.tensor(X, dtype=torch.float32).cuda()
+        """
+        Predict the labels for the input data using kNN.
+        """
+        X = torch.tensor(X, device=self.device)
         num_samples = X.shape[0]
         predictions = []
         
@@ -144,23 +149,47 @@ class CustomKNN_GPU:
         
         return np.concatenate(predictions, axis=0)
 
-def grid_search_knn(X_train, y_train):
+def bayesian_optimization_knn(X_train, y_train):
     """
-    Perform grid search to find the best kNN parameters.
+    Perform Bayesian Optimization to find the best kNN parameters.
     """
-    param_grid = {
-        'n_neighbors': [10, 15, 17, 20],
-        'weights': ['uniform', 'distance'],
-        'metric': ['euclidean', 'manhattan', 'chebyshev']
-    }
-    knn = KNeighborsClassifier()
-    grid_search = GridSearchCV(knn, param_grid, cv=5, scoring='accuracy', n_jobs=-1)
-    grid_search.fit(X_train, y_train)
+    def knn_evaluate(n_neighbors, weights_idx, metric_idx):
+        n_neighbors = int(n_neighbors)
+        weights_options = ['uniform', 'distance']
+        metric_options = ['euclidean', 'manhattan', 'chebyshev']
+        weights = weights_options[int(weights_idx)]
+        metric = metric_options[int(metric_idx)]
+        
+        knn = KNeighborsClassifier(n_neighbors=n_neighbors, weights=weights, metric=metric)
+        knn.fit(X_train, y_train)
+        score = knn.score(X_train, y_train)
+        return score
     
-    logger.info(f"Best parameters found: {grid_search.best_params_}")
-    logger.info(f"Best cross-validation accuracy: {grid_search.best_score_}")
+    pbounds = {
+        'n_neighbors': (10, 20),
+        'weights_idx': (0, 1),
+        'metric_idx': (0, 2)
+    }
+    
+    optimizer = BayesianOptimization(
+        f=knn_evaluate,
+        pbounds=pbounds,
+        random_state=42
+    )
+    optimizer.maximize(init_points=10, n_iter=30)
+    
+    best_params = optimizer.max['params']
+    best_params['n_neighbors'] = int(best_params['n_neighbors'])
+    best_params['weights'] = ['uniform', 'distance'][int(best_params.pop('weights_idx'))]
+    best_params['metric'] = ['euclidean', 'manhattan', 'cosine'][int(best_params.pop('metric_idx'))]
+    
+    best_knn = KNeighborsClassifier(**best_params)
+    best_knn.fit(X_train, y_train)
+    
+    logger.info(f"Best parameters found: {best_params}")
+    
+    return best_knn, best_params
 
-    return grid_search.best_estimator_, grid_search.best_params_
 
 def train_boosted_knn(X_train, y_train):
     """
@@ -170,7 +199,7 @@ def train_boosted_knn(X_train, y_train):
     boost_model.fit(X_train, y_train)
     return boost_model
 
-def predict_with_ensemble(classifiers, X_test_samples, batch_size=1000):
+def predict_with_ensemble(classifiers, X_test_samples):
     """
     Make predictions using an ensemble of classifiers.
     """
@@ -180,7 +209,9 @@ def predict_with_ensemble(classifiers, X_test_samples, batch_size=1000):
     final_predictions = np.apply_along_axis(lambda x: np.bincount(x.astype(int)).argmax(), axis=1, arr=predictions)
     return final_predictions
 
-def evaluate_and_save_results(classifiers, X_test_samples, y_test, method, n_components, k, n_classifiers, output_file, best_params):
+
+
+def evaluate_and_save_results(classifiers, X_test_samples, y_test, method, n_components, n_classifiers, output_file, best_params, sampling_method, X_oob=None, y_oob=None):
     """
     Evaluate the ensemble and save results.
     """
@@ -191,7 +222,10 @@ def evaluate_and_save_results(classifiers, X_test_samples, y_test, method, n_com
     f1 = f1_score(y_test, y_pred, average='weighted')
     misclassified_indices = np.where(y_pred != y_test)[0]
     
-    logger.info(f"Accuracy for method={method}, n_components={n_components}, k={k}, n_classifiers={n_classifiers}: {accuracy:.4f}")
+    k = best_params['n_neighbors']
+    boosting_technique = "GradientBoostingClassifier"
+    
+    logger.info(f"Accuracy for method={method}, n_components={n_components}, k={k}, n_classifiers={n_classifiers}, sampling_method={sampling_method}: {accuracy:.4f}")
     
     results = {
         'method': method,
@@ -203,29 +237,20 @@ def evaluate_and_save_results(classifiers, X_test_samples, y_test, method, n_com
         'precision': precision,
         'recall': recall,
         'f1_score': f1,
+        'sampling_method': sampling_method,
+        'boosting_technique': boosting_technique,
         'total_misclassified': len(misclassified_indices),
         'misclassified_indices': random.sample(list(misclassified_indices), 5) if len(misclassified_indices) > 0 else 'None'
     }
+
+    # Ensure this header is used only if the file doesn't exist yet
+    header = not os.path.exists(output_file)
     df = pd.DataFrame([results])
-    df.to_csv(output_file, mode='a', header=not os.path.exists(output_file), index=False)
+    df.to_csv(output_file, mode='a', header=header, index=False)
     logger.info(f"Results saved to {output_file}")
 
-def train_and_evaluate_classifier(X_train, y_train, X_test, method, n_components, i):
-    """
-    Train and evaluate a single classifier for parallel processing.
-    """
-    X_sample, y_sample = create_bootstrap_sample(X_train, y_train, random_state=i)
-    X_projected, transformer = apply_projection(X_sample, method=method, n_components=n_components, random_state=i)
-    X_test_projected = apply_projection_to_test(X_test, transformer)
 
-    logger.info(f"Bootstrap sample {i} shape: {X_sample.shape}, Projected shape: {X_projected.shape}")
-    
-    # Perform grid search for the best kNN parameters
-    best_knn, best_params = grid_search_knn(X_projected, y_sample)
-    # Train boosted kNN model
-    boosted_knn = train_boosted_knn(X_projected, y_sample)
-    
-    return boosted_knn, X_test_projected, best_params
+
 
 def main_forest_knn(dataset_name):
     """
@@ -240,23 +265,43 @@ def main_forest_knn(dataset_name):
     output_file = f'{dataset_name}_forest_knn_results.csv'
     
     methods = ['random', 'pca']
-    n_components_list = [50, 100, 200]
-    k_values = [10, 15, 17, 20]
-    n_classifiers_list = [20, 30, 50]
+    n_components_list = [20, 50, 100]
+    n_classifiers_list = [10, 20, 30]
+    sampling_methods = ['bootstrap', 'stratified', 'balanced', 'smote', 'oob']
     
-    for method, n_components, n_classifiers in itertools.product(methods, n_components_list, n_classifiers_list):
-        logger.info(f"\nStarting evaluation for method={method}, n_components={n_components}, n_classifiers={n_classifiers}...")
+    for method, n_components, n_classifiers, sampling_method in itertools.product(methods, n_components_list, n_classifiers_list, sampling_methods):
+        logger.info(f"\nStarting evaluation for method={method}, n_components={n_components}, n_classifiers={n_classifiers}, sampling_method={sampling_method}...")
+        classifiers = []
+        X_test_samples = []
         
-        results = Parallel(n_jobs=-1)(
-            delayed(train_and_evaluate_classifier)(
-                X_train, y_train, X_test, method, n_components, i
-            ) for i in range(n_classifiers)
-        )
+        for i in range(n_classifiers):
+            if sampling_method == 'oob':
+                X_sample, y_sample, X_oob, y_oob = create_bootstrap_sample(X_train, y_train, method=sampling_method, random_state=i)
+            else:
+                X_sample, y_sample = create_bootstrap_sample(X_train, y_train, method=sampling_method, random_state=i)
+            
+            X_projected, transformer = apply_projection(X_sample, method=method, n_components=n_components, random_state=i)
+            X_test_projected = apply_projection_to_test(X_test, transformer)
+            
+            if sampling_method == 'oob':
+                X_oob_projected = apply_projection_to_test(X_oob, transformer)
+            
+            logger.info(f"Bootstrap sample {i} shape: {X_sample.shape}, Projected shape: {X_projected.shape}")
+            
+            # Perform Bayesian optimization for the best kNN parameters
+            best_knn, best_params = bayesian_optimization_knn(X_projected, y_sample)
+            # Train boosted kNN model
+            boosted_knn = train_boosted_knn(X_projected, y_sample)
+            classifiers.append(boosted_knn)
+            X_test_samples.append(X_test_projected)
+        
+        if sampling_method == 'oob':
+            evaluate_and_save_results(classifiers, X_test_samples, y_test, method, n_components, n_classifiers, output_file, best_params, sampling_method, X_oob_projected, y_oob)
+        else:
+            evaluate_and_save_results(classifiers, X_test_samples, y_test, method, n_components, n_classifiers, output_file, best_params, sampling_method)
+        logger.info(f"Evaluation completed for method={method}, n_components={n_components}, n_classifiers={n_classifiers}, sampling_method={sampling_method}")
 
-        classifiers, X_test_samples, best_params_list = zip(*results)
-        
-        evaluate_and_save_results(classifiers, X_test_samples, y_test, method, n_components, None, n_classifiers, output_file, best_params_list[0])
-        logger.info(f"Evaluation completed for method={method}, n_components={n_components}, n_classifiers={n_classifiers}")
+
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Forest-kNN Classification with PyTorch")

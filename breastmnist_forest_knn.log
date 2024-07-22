@@ -1,5 +1,21 @@
-2024-07-21 15:12:26,728 - INFO - Starting Forest-kNN on dataset breastmnist
-2024-07-21 15:12:26,728 - INFO - Starting Forest-kNN on dataset breastmnist
-2024-07-21 15:12:26,733 - INFO - Loaded dataset breastmnist with shapes - X_train: (546, 768), X_val: (78, 768), X_test: (156, 768)
-2024-07-21 15:12:26,734 - INFO - 
-Starting evaluation for method=random, n_components=50, n_classifiers=20...
+2024-07-22 11:16:43,442 - INFO - Starting Forest-KNN on dataset breastmnist
+2024-07-22 11:16:43,442 - INFO - Starting Forest-KNN on dataset breastmnist
+2024-07-22 11:16:43,473 - INFO - Loaded dataset breastmnist with shapes - X_train: (546, 768), X_val: (78, 768), X_test: (156, 768)
+2024-07-22 11:17:01,617 - INFO - Best parameters found: {'method': 'isomap', 'n_classifiers': 13.606371383016413, 'n_components': 132.99556750900797, 'n_neighbors': 3.0, 'variance_threshold': 0.99, 'weights': 'uniform', 'metric': 'cosine', 'sampling_method': 'oob'} with accuracy: 0.9158
+2024-07-22 11:17:01,707 - INFO - Bootstrap sample 0 shape: (546, 768), Projected shape: (546, 132)
+2024-07-22 11:17:01,792 - INFO - Bootstrap sample 1 shape: (546, 768), Projected shape: (546, 132)
+2024-07-22 11:17:01,882 - INFO - Bootstrap sample 2 shape: (546, 768), Projected shape: (546, 132)
+2024-07-22 11:17:01,972 - INFO - Bootstrap sample 3 shape: (546, 768), Projected shape: (546, 132)
+2024-07-22 11:17:02,062 - INFO - Bootstrap sample 4 shape: (546, 768), Projected shape: (546, 132)
+2024-07-22 11:17:02,149 - INFO - Bootstrap sample 5 shape: (546, 768), Projected shape: (546, 132)
+2024-07-22 11:17:02,241 - INFO - Bootstrap sample 6 shape: (546, 768), Projected shape: (546, 132)
+2024-07-22 11:17:02,331 - INFO - Bootstrap sample 7 shape: (546, 768), Projected shape: (546, 132)
+2024-07-22 11:17:02,415 - INFO - Bootstrap sample 8 shape: (546, 768), Projected shape: (546, 132)
+2024-07-22 11:17:02,503 - INFO - Bootstrap sample 9 shape: (546, 768), Projected shape: (546, 132)
+2024-07-22 11:17:02,588 - INFO - Bootstrap sample 10 shape: (546, 768), Projected shape: (546, 132)
+2024-07-22 11:17:02,678 - INFO - Bootstrap sample 11 shape: (546, 768), Projected shape: (546, 132)
+2024-07-22 11:17:02,768 - INFO - Bootstrap sample 12 shape: (546, 768), Projected shape: (546, 132)
+2024-07-22 11:17:03,182 - INFO - Accuracy for method=isomap, n_components=132, variance_threshold=0.99, k=3.0, n_classifiers=13, sampling_method=oob: 0.7308
+2024-07-22 11:17:03,196 - INFO - Results saved to breastmnist_forest_knn_results.csv
+2024-07-22 11:17:03,196 - INFO - Completed for method=isomap, n_components=132, variance_threshold=0.99, n_classifiers=13, sampling_method=oob
+2024-07-22 11:17:03,197 - INFO - Forest-KNN evaluation completed.

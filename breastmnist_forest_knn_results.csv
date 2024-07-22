@@ -1,8 +1,2 @@
-method,n_components,k,n_classifiers,best_params,accuracy,precision,recall,f1_score,total_misclassified,misclassified_indices
-random,50,,20,"{'metric': 'chebyshev', 'n_neighbors': 20, 'weights': 'distance'}",0.8141025641025641,0.8369339879978179,0.8141025641025641,0.7799158529808684,29,"[120, 76, 110, 26, 126]"
-random,50,,30,"{'metric': 'chebyshev', 'n_neighbors': 20, 'weights': 'distance'}",0.8012820512820513,0.8138025095471904,0.8012820512820513,0.7647376359450663,31,"[44, 7, 95, 119, 132]"
-random,50,,50,"{'metric': 'chebyshev', 'n_neighbors': 20, 'weights': 'distance'}",0.7884615384615384,0.800161377084454,0.7884615384615384,0.744627357078719,33,"[20, 48, 40, 76, 110]"
-random,100,,20,"{'metric': 'manhattan', 'n_neighbors': 15, 'weights': 'distance'}",0.8141025641025641,0.8263778117777272,0.8141025641025641,0.7839021700480802,29,"[13, 26, 126, 55, 123]"
-random,100,,30,"{'metric': 'manhattan', 'n_neighbors': 15, 'weights': 'distance'}",0.8076923076923077,0.8121516164994426,0.8076923076923077,0.7783882783882784,30,"[24, 141, 138, 48, 95]"
-random,100,,50,"{'metric': 'manhattan', 'n_neighbors': 15, 'weights': 'distance'}",0.7948717948717948,0.791898922333705,0.7948717948717948,0.7636141636141636,32,"[119, 84, 68, 126, 40]"
-random,200,,20,"{'metric': 'euclidean', 'n_neighbors': 17, 'weights': 'distance'}",0.8076923076923077,0.806447963800905,0.8076923076923077,0.7820347394540943,30,"[44, 85, 26, 15, 55]"
+method,n_components,variance_threshold,k,n_classifiers,best_params,accuracy,precision,recall,f1_score,sampling_method,total_misclassified,misclassified_indices
+isomap,132,0.99,3.0,13,"{'method': 'isomap', 'n_classifiers': 13.606371383016413, 'n_components': 132.99556750900797, 'n_neighbors': 3.0, 'variance_threshold': 0.99, 'weights': 'uniform', 'metric': 'cosine', 'sampling_method': 'oob'}",0.7307692307692307,0.7156368221941992,0.7307692307692307,0.7211624236601936,oob,42,"[75, 7, 127, 67, 15]"

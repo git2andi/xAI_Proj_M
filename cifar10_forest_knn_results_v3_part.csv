@@ -1,2 +1,0 @@
-method,n_components,k,n_classifiers,accuracy,precision,recall,f1_score,total_misclassified,misclassified_indices
-random,100,,20,0.9815,0.9816289888231884,0.9815,0.9815188753701212,185,"[3343, 5882, 5927, 6750, 1595]"

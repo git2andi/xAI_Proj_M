@@ -62,7 +62,7 @@ def load_embeddings_and_labels(dataset_name, root_path):
         train_data = np.load(os.path.join(root_path, dataset_name, 'train.npz'))
         test_data = np.load(os.path.join(root_path, dataset_name, 'test.npz'))
         X_train, y_train = train_data['embeddings'], train_data['labels'].reshape(-1,)
-        X_train, X_val, y_train, y_val = train_test_split(X_train, y_train, test_size=0.2, random_state=None) #random_state=42
+        X_train, X_val, y_train, y_val = train_test_split(X_train, y_train, test_size=0.2, random_state=42) #random_state=42
         X_test, y_test = test_data['embeddings'], test_data['labels'].reshape(-1,)
     
     return X_train, y_train, X_val, y_val, X_test, y_test

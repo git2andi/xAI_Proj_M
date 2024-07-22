@@ -1,0 +1,3 @@
+2024-07-22 11:17:30,908 - INFO - Starting Forest-KNN on dataset cifar10
+2024-07-22 11:17:30,908 - INFO - Starting Forest-KNN on dataset cifar10
+2024-07-22 11:17:31,324 - INFO - Loaded dataset cifar10 with shapes - X_train: (40000, 768), X_val: (10000, 768), X_test: (10000, 768)
