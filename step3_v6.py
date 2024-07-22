@@ -8,35 +8,16 @@ from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_sc
 from sklearn.decomposition import PCA
 from sklearn.random_projection import GaussianRandomProjection
 from sklearn.utils import resample
-from sklearn.neighbors import KNeighborsClassifier
 import pandas as pd
-import logging
 import random
-from bayes_opt import BayesianOptimization, Events
+from bayes_opt import BayesianOptimization
 from imblearn.over_sampling import SMOTE
 from sklearn.model_selection import StratifiedShuffleSplit
-from sklearn.manifold import Isomap
+from torch.utils.data import DataLoader, TensorDataset
+import sys
 
 root_path = "./database"
-
-def setup_logging(dataset_name):
-    logger_name = f'forest_knn_logger_{dataset_name}'
-    logger = logging.getLogger(logger_name)
-    
-    if not logger.hasHandlers():
-        logger.setLevel(logging.DEBUG)
-        console_handler = logging.StreamHandler()
-        file_handler = logging.FileHandler(f'{dataset_name}_forest_knn.log')
-        console_handler.setLevel(logging.INFO)
-        file_handler.setLevel(logging.DEBUG)
-        console_formatter = logging.Formatter('%(asctime)s - %(levelname)s - %(message)s')
-        file_formatter = logging.Formatter('%(asctime)s - %(levelname)s - %(message)s')
-        console_handler.setFormatter(console_formatter)
-        file_handler.setFormatter(file_formatter)
-        logger.addHandler(console_handler)
-        logger.addHandler(file_handler)
-
-    return logger
+RANDOM_STATE = None
 
 def load_embeddings_and_labels(dataset_name, root_path):
     if dataset_name in ["dermamnist", "breastmnist"]:
@@ -53,10 +34,11 @@ def load_embeddings_and_labels(dataset_name, root_path):
         X_train, X_val, y_train, y_val = train_test_split(X_train, y_train, test_size=0.2, random_state=42)
         X_test, y_test = test_data['embeddings'], test_data['labels'].reshape(-1,)
     
-    logger.info(f"Loaded dataset {dataset_name} with shapes - X_train: {X_train.shape}, X_val: {X_val.shape}, X_test: {X_test.shape}")
+    print(f"Loaded dataset {dataset_name} with shapes - X_train: {X_train.shape}, X_val: {X_val.shape}, X_test: {X_test.shape}")
     return X_train, y_train, X_val, y_val, X_test, y_test
 
-def create_bootstrap_sample(X, y, method='bootstrap', random_state=42):
+def create_bootstrap_sample(X, y, method='bootstrap', random_state=RANDOM_STATE):
+    rng = np.random.default_rng(random_state)  # Create a random generator instance
     if method == 'bootstrap':
         return resample(X, y, random_state=random_state)
     elif method == 'stratified':
@@ -84,13 +66,13 @@ def create_bootstrap_sample(X, y, method='bootstrap', random_state=42):
         return X_resampled, y_resampled
     elif method == 'oob':
         n_samples = len(X)
-        indices = np.random.choice(np.arange(n_samples), size=n_samples, replace=True)
+        indices = rng.choice(np.arange(n_samples), size=n_samples, replace=True)  # Use rng for random choice
         oob_indices = np.setdiff1d(np.arange(n_samples), indices)
         return X[indices], y[indices], X[oob_indices], y[oob_indices]
     else:
         raise ValueError("Unknown sampling method.")
 
-def apply_projection(X, y=None, method='random', n_components=None, variance_threshold=None, random_state=42):
+def apply_projection(X, y=None, method='random', n_components=None, variance_threshold=None, random_state=RANDOM_STATE):
     if n_components is not None:
         n_components = int(n_components)
     if method == 'random':
@@ -104,8 +86,6 @@ def apply_projection(X, y=None, method='random', n_components=None, variance_thr
             transformer = PCA(n_components=n_components, random_state=random_state)
         else:
             raise ValueError("Either n_components or variance_threshold must be specified for PCA")
-    # elif method == 'isomap':
-    #     transformer = Isomap(n_components=n_components)
     else:
         raise ValueError("Unknown projection method.")
     
@@ -124,26 +104,23 @@ class CustomKNN:
     def fit(self, X, y):
         self.X_train = torch.tensor(X, device=self.device)
         self.y_train = torch.tensor(y, device=self.device)
+        self.train_dataset = TensorDataset(self.X_train, self.y_train)
+        self.train_loader = DataLoader(self.train_dataset, batch_size=50, shuffle=False)
 
     def predict(self, X, batch_size=50):
         X = torch.tensor(X, device=self.device)
-        num_samples = X.shape[0]
-        predictions = []
+        test_dataset = TensorDataset(X)
+        test_loader = DataLoader(test_dataset, batch_size=batch_size, shuffle=False)
         
-        for i in range(0, num_samples, batch_size):
-            batch = X[i:i + batch_size]
+        predictions = []
+        for batch in test_loader:
+            batch = batch[0]
             if self.distance_metric == 'euclidean':
                 distances = torch.cdist(batch, self.X_train)
             elif self.distance_metric == 'manhattan':
                 distances = torch.cdist(batch, self.X_train, p=1)
             elif self.distance_metric == 'cosine':
                 distances = 1 - F.cosine_similarity(batch.unsqueeze(1), self.X_train.unsqueeze(0), dim=2)
-            # elif self.distance_metric == 'minkowski':
-            #     distances = torch.cdist(batch, self.X_train, p=2)
-            # elif self.distance_metric == 'chebyshev':
-            #     distances = torch.cdist(batch, self.X_train, p=float('inf'))
-            # elif self.distance_metric == 'hamming':
-            #     distances = torch.cdist(batch, self.X_train, p=0)
             else:
                 raise ValueError(f"Unsupported distance metric: {self.distance_metric}")
             
@@ -155,29 +132,19 @@ class CustomKNN:
         
         return np.concatenate(predictions, axis=0)
 
-class LoggerCallback:
-    def __init__(self, logger):
-        self.logger = logger
-
-    def update(self, event, instance):
-        for i, res in enumerate(instance.res):
-            self.logger.info(f"| {i+1:8} | {res['target']:8.4f} | {res['params']} |")
-
-
-
-def bayesian_optimization_knn(X_train, y_train, logger):
-    def knn_evaluate(method, n_components, variance_threshold, n_neighbors, weights_idx, metric_idx, n_classifiers, sampling_method):
+def bayesian_optimization_knn(X_train, y_train, dataset_name):
+    def knn_evaluate(method, n_components, variance_threshold, n_neighbors, metric_idx, n_classifiers, sampling_method):
         method = ['random', 'pca'][int(method)]
-        weights_options = ['uniform', 'distance']
         metric_options = ['euclidean', 'manhattan', 'cosine']
-        weights = weights_options[int(weights_idx)]
         metric = metric_options[int(metric_idx)]
         sampling_method = ['bootstrap', 'stratified', 'balanced', 'smote', 'oob'][int(sampling_method)]
         n_components = int(n_components)
+        n_neighbors = int(n_neighbors)
+        n_classifiers = int(n_classifiers)
 
-        X_projected, transformer = apply_projection(X_train, method=method, n_components=n_components, variance_threshold=variance_threshold, random_state=42)
- 
-        knn = CustomKNN(k=int(n_neighbors), distance_metric=metric, device='cuda')
+        X_projected, transformer = apply_projection(X_train, method=method, n_components=n_components, variance_threshold=variance_threshold, random_state=RANDOM_STATE)
+
+        knn = CustomKNN(k=n_neighbors, distance_metric=metric, device='cuda')
         knn.fit(X_projected, y_train)
         score = knn.predict(X_projected)
         return accuracy_score(y_train, score)
@@ -187,7 +154,6 @@ def bayesian_optimization_knn(X_train, y_train, logger):
         'n_components': (50, 150),
         'variance_threshold': (0.9, 0.99),
         'n_neighbors': (3, 10),
-        'weights_idx': (0, 1),
         'metric_idx': (0, 2),
         'n_classifiers': (10, 30),
         'sampling_method': (0, 4)
@@ -199,25 +165,18 @@ def bayesian_optimization_knn(X_train, y_train, logger):
         random_state=42
     )
 
-    # Create an instance of the LoggerCallback class
-    logger_callback = LoggerCallback(logger)
-
-    # Subscribe to the optimization step event
-    optimizer.subscribe(Events.OPTIMIZATION_STEP, logger_callback)
-
     optimizer.maximize(init_points=10, n_iter=50)
 
     best_params = optimizer.max['params']
     best_accuracy = optimizer.max['target']
     best_params['method'] = ['random', 'pca'][int(best_params['method'])]
-    best_params['weights'] = ['uniform', 'distance'][int(best_params.pop('weights_idx'))]
     best_params['metric'] = ['euclidean', 'manhattan', 'cosine'][int(best_params.pop('metric_idx'))]
     best_params['sampling_method'] = ['bootstrap', 'stratified', 'balanced', 'smote', 'oob'][int(best_params.pop('sampling_method'))]
 
     if best_params['method'] == 'pca' and best_params['variance_threshold'] is not None:
-        transformer = PCA(n_components=best_params['variance_threshold'], random_state=42)
+        transformer = PCA(n_components=best_params['variance_threshold'], random_state=RANDOM_STATE)
     elif best_params['method'] in ['random', 'pca'] and best_params['n_components'] is not None:
-        transformer = PCA(n_components=int(best_params['n_components']), random_state=42) if best_params['method'] == 'pca' else GaussianRandomProjection(n_components=int(best_params['n_components']), random_state=42)
+        transformer = PCA(n_components=int(best_params['n_components']), random_state=RANDOM_STATE) if best_params['method'] == 'pca' else GaussianRandomProjection(n_components=int(best_params['n_components']), random_state=RANDOM_STATE)
     else:
         raise ValueError("Unknown projection method.")
 
@@ -231,10 +190,9 @@ def bayesian_optimization_knn(X_train, y_train, logger):
     )
     best_knn.fit(X_projected, y_train)
 
-    logger.info(f"Best parameters found: {best_params} with accuracy: {best_accuracy:.4f}")
+    print(f"Best parameters found: {best_params} with accuracy: {best_accuracy:.4f}")
 
     return best_knn, best_params, transformer
-
 
 def predict_with_ensemble(classifiers, X_test_samples, batch_size=50):
     predictions = np.zeros((X_test_samples[0].shape[0], len(classifiers)))
@@ -254,7 +212,7 @@ def evaluate_and_save_results(classifiers, X_test_samples, y_test, method, n_com
     
     k = best_params['n_neighbors']
     
-    logger.info(f"Accuracy for method={method}, n_components={n_components}, variance_threshold={variance_threshold}, k={k}, n_classifiers={n_classifiers}, sampling_method={sampling_method}: {accuracy:.4f}")
+    print(f"Accuracy for method={method}, n_components={n_components}, variance_threshold={variance_threshold}, k={k}, n_classifiers={n_classifiers}, sampling_method={sampling_method}: {accuracy:.4f}")
     
     results = {
         'method': method,
@@ -274,56 +232,54 @@ def evaluate_and_save_results(classifiers, X_test_samples, y_test, method, n_com
 
     df = pd.DataFrame([results])
     df.to_csv(output_file, mode='a', header=not os.path.exists(output_file), index=False)
-    logger.info(f"Results saved to {output_file}")
+    print(f"Results saved to {output_file}")
 
 def main_forest_knn(dataset_name):
-    global logger
-    logger = setup_logging(dataset_name)
-    logger.info(f"Starting Forest-KNN on dataset {dataset_name}")
-    logger.info(f"Starting Forest-KNN on dataset {dataset_name}")
+    print(f"Starting Forest-KNN on dataset {dataset_name}")
 
     X_train, y_train, X_val, y_val, X_test, y_test = load_embeddings_and_labels(dataset_name, root_path)
-
     output_file = f'{dataset_name}_forest_knn_results.csv'
     
-    best_knn, best_params, transformer = bayesian_optimization_knn(X_train, y_train, logger)
+    for run in range(10):
+        print(f"Run {run+1}/10")
+        best_knn, best_params, transformer = bayesian_optimization_knn(X_train, y_train, dataset_name)
+        
+        method = best_params['method']
+        n_components = int(best_params['n_components'])
+        variance_threshold = best_params.get('variance_threshold', None)
+        n_classifiers = int(best_params['n_classifiers'])
+        sampling_method = best_params['sampling_method']
+        
+        classifiers = []
+        X_test_samples = []
+        
+        for i in range(n_classifiers):
+            if sampling_method == 'oob':
+                X_sample, y_sample, X_oob, y_oob = create_bootstrap_sample(X_train, y_train, method=sampling_method, random_state=RANDOM_STATE)
+            else:
+                X_sample, y_sample = create_bootstrap_sample(X_train, y_train, method=sampling_method, random_state=RANDOM_STATE)
+            
+            X_projected = transformer.transform(X_sample)
+            X_test_projected = apply_projection_to_test(X_test, transformer)
+            
+            if sampling_method == 'oob':
+                X_oob_projected = apply_projection_to_test(X_oob, transformer)
+            
+            print(f"Bootstrap sample {i} shape: {X_sample.shape}, Projected shape: {X_projected.shape}")
+            
+            knn = CustomKNN(k=int(best_params['n_neighbors']), distance_metric=best_params['metric'], device='cuda')
+            knn.fit(X_projected, y_sample)
+            classifiers.append(knn)
+            X_test_samples.append(X_test_projected)
 
-    method = best_params['method']
-    n_components = int(best_params['n_components'])
-    variance_threshold = best_params.get('variance_threshold', None)
-    n_classifiers = int(best_params['n_classifiers'])
-    sampling_method = best_params['sampling_method']
-    
-    classifiers = []
-    X_test_samples = []
-
-    for i in range(n_classifiers):
+            torch.cuda.empty_cache()  # Clear CUDA cache to free up memory
+        
         if sampling_method == 'oob':
-            X_sample, y_sample, X_oob, y_oob = create_bootstrap_sample(X_train, y_train, method=sampling_method, random_state=i)
+            evaluate_and_save_results(classifiers, X_test_samples, y_test, method, n_components, variance_threshold, n_classifiers, output_file, best_params, sampling_method, X_oob_projected, y_oob)
         else:
-            X_sample, y_sample = create_bootstrap_sample(X_train, y_train, method=sampling_method, random_state=i)
+            evaluate_and_save_results(classifiers, X_test_samples, y_test, method, n_components, variance_threshold, n_classifiers, output_file, best_params, sampling_method)
         
-        X_projected = transformer.transform(X_sample)
-        X_test_projected = apply_projection_to_test(X_test, transformer)
-        
-        if sampling_method == 'oob':
-            X_oob_projected = apply_projection_to_test(X_oob, transformer)
-        
-        logger.info(f"Bootstrap sample {i} shape: {X_sample.shape}, Projected shape: {X_projected.shape}")
-
-        knn = CustomKNN(k=int(best_params['n_neighbors']), distance_metric=best_params['metric'], device='cuda')
-        knn.fit(X_projected, y_sample)
-        classifiers.append(knn)
-        X_test_samples.append(X_test_projected)
-
-        torch.cuda.empty_cache()  # Clear CUDA cache to free up memory
-
-    if sampling_method == 'oob':
-        evaluate_and_save_results(classifiers, X_test_samples, y_test, method, n_components, variance_threshold, n_classifiers, output_file, best_params, sampling_method, X_oob_projected, y_oob)
-    else:
-        evaluate_and_save_results(classifiers, X_test_samples, y_test, method, n_components, variance_threshold, n_classifiers, output_file, best_params, sampling_method)
-    
-    logger.info(f"Completed for method={method}, n_components={n_components}, variance_threshold={variance_threshold}, n_classifiers={n_classifiers}, sampling_method={sampling_method}")
+        print(f"Completed run {run+1}/10 for method={method}, n_components={n_components}, variance_threshold={variance_threshold}, n_classifiers={n_classifiers}, sampling_method={sampling_method}")
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Forest-kNN Classification with PyTorch")
@@ -331,7 +287,6 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     dataset_name = args.dataset
-    logger = setup_logging(dataset_name)
-    logger.info(f"Starting Forest-KNN on dataset {dataset_name}")
+    print(f"Starting Forest-KNN on dataset {dataset_name}")
     main_forest_knn(dataset_name)
-    logger.info("Forest-KNN evaluation completed.")
+    print("Forest-KNN evaluation completed.")
