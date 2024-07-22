@@ -104,8 +104,8 @@ def apply_projection(X, y=None, method='random', n_components=None, variance_thr
             transformer = PCA(n_components=n_components, random_state=random_state)
         else:
             raise ValueError("Either n_components or variance_threshold must be specified for PCA")
-    elif method == 'isomap':
-        transformer = Isomap(n_components=n_components)
+    #elif method == 'isomap':
+    #    transformer = Isomap(n_components=n_components)
     else:
         raise ValueError("Unknown projection method.")
     
@@ -125,7 +125,7 @@ class CustomKNN:
         self.X_train = torch.tensor(X, device=self.device)
         self.y_train = torch.tensor(y, device=self.device)
 
-    def predict(self, X, batch_size=200):
+    def predict(self, X, batch_size=50):
         X = torch.tensor(X, device=self.device)
         num_samples = X.shape[0]
         predictions = []
@@ -138,12 +138,12 @@ class CustomKNN:
                 distances = torch.cdist(batch, self.X_train, p=1)
             elif self.distance_metric == 'cosine':
                 distances = 1 - F.cosine_similarity(batch.unsqueeze(1), self.X_train.unsqueeze(0), dim=2)
-            elif self.distance_metric == 'minkowski':
-                distances = torch.cdist(batch, self.X_train, p=2)
-            elif self.distance_metric == 'chebyshev':
-                distances = torch.cdist(batch, self.X_train, p=float('inf'))
-            elif self.distance_metric == 'hamming':
-                distances = torch.cdist(batch, self.X_train, p=0)
+            #elif self.distance_metric == 'minkowski':
+            #    distances = torch.cdist(batch, self.X_train, p=2)
+            #elif self.distance_metric == 'chebyshev':
+            #    distances = torch.cdist(batch, self.X_train, p=float('inf'))
+            #elif self.distance_metric == 'hamming':
+            #    distances = torch.cdist(batch, self.X_train, p=0)
             else:
                 raise ValueError(f"Unsupported distance metric: {self.distance_metric}")
             
@@ -155,11 +155,11 @@ class CustomKNN:
         
         return np.concatenate(predictions, axis=0)
 
-def bayesian_optimization_knn(X_train, y_train):
+def bayesian_optimization_knn(X_train, y_train, logger):
     def knn_evaluate(method, n_components, variance_threshold, n_neighbors, weights_idx, metric_idx, n_classifiers, sampling_method):
-        method = ['random', 'pca', 'isomap'][int(method)]
+        method = ['random', 'pca'][int(method)]
         weights_options = ['uniform', 'distance']
-        metric_options = ['euclidean', 'manhattan', 'chebyshev', 'cosine', 'minkowski', 'hamming']
+        metric_options = ['euclidean', 'manhattan', 'cosine']
         weights = weights_options[int(weights_idx)]
         metric = metric_options[int(metric_idx)]
         sampling_method = ['bootstrap', 'stratified', 'balanced', 'smote', 'oob'][int(sampling_method)]
@@ -173,12 +173,12 @@ def bayesian_optimization_knn(X_train, y_train):
         return accuracy_score(y_train, score)
 
     pbounds = {
-        'method': (0, 2),
+        'method': (0, 1),
         'n_components': (50, 150),
         'variance_threshold': (0.9, 0.99),
         'n_neighbors': (3, 10),
         'weights_idx': (0, 1),
-        'metric_idx': (0, 5),
+        'metric_idx': (0, 2),
         'n_classifiers': (10, 30),
         'sampling_method': (0, 4)
     }
@@ -188,21 +188,25 @@ def bayesian_optimization_knn(X_train, y_train):
         pbounds=pbounds,
         random_state=42
     )
+
+    def log_to_existing_logger(event):
+        logger.info(event)
+
+    optimizer.subscribe(Events.OPTIMIZATION_STEP, log_to_existing_logger)
+
     optimizer.maximize(init_points=10, n_iter=50)
 
     best_params = optimizer.max['params']
     best_accuracy = optimizer.max['target']
-    best_params['method'] = ['random', 'pca', 'isomap'][int(best_params['method'])]
+    best_params['method'] = ['random', 'pca'][int(best_params['method'])]
     best_params['weights'] = ['uniform', 'distance'][int(best_params.pop('weights_idx'))]
-    best_params['metric'] = ['euclidean', 'manhattan', 'chebyshev', 'cosine', 'minkowski', 'hamming'][int(best_params.pop('metric_idx'))]
+    best_params['metric'] = ['euclidean', 'manhattan', 'cosine'][int(best_params.pop('metric_idx'))]
     best_params['sampling_method'] = ['bootstrap', 'stratified', 'balanced', 'smote', 'oob'][int(best_params.pop('sampling_method'))]
 
     if best_params['method'] == 'pca' and best_params['variance_threshold'] is not None:
         transformer = PCA(n_components=best_params['variance_threshold'], random_state=42)
     elif best_params['method'] in ['random', 'pca'] and best_params['n_components'] is not None:
         transformer = PCA(n_components=int(best_params['n_components']), random_state=42) if best_params['method'] == 'pca' else GaussianRandomProjection(n_components=int(best_params['n_components']), random_state=42)
-    elif best_params['method'] == 'isomap':
-        transformer = Isomap(n_components=int(best_params['n_components']))
     else:
         raise ValueError("Unknown projection method.")
 
@@ -220,7 +224,8 @@ def bayesian_optimization_knn(X_train, y_train):
 
     return best_knn, best_params, transformer
 
-def predict_with_ensemble(classifiers, X_test_samples, batch_size=200):
+
+def predict_with_ensemble(classifiers, X_test_samples, batch_size=50):
     predictions = np.zeros((X_test_samples[0].shape[0], len(classifiers)))
     for i, (clf, X_test) in enumerate(zip(classifiers, X_test_samples)):
         predictions[:, i] = clf.predict(X_test, batch_size=batch_size)
@@ -269,7 +274,7 @@ def main_forest_knn(dataset_name):
 
     output_file = f'{dataset_name}_forest_knn_results.csv'
     
-    best_knn, best_params, transformer = bayesian_optimization_knn(X_train, y_train)
+    best_knn, best_params, transformer = bayesian_optimization_knn(X_train, y_train, logger)
 
     method = best_params['method']
     n_components = int(best_params['n_components'])
@@ -316,5 +321,4 @@ if __name__ == "__main__":
     dataset_name = args.dataset
     logger = setup_logging(dataset_name)
     logger.info(f"Starting Forest-KNN on dataset {dataset_name}")
-    main_forest_knn(dataset_name)
-    logger.info("Forest-KNN evaluation completed.")
+
