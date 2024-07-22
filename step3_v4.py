@@ -2,314 +2,197 @@ import os
 import numpy as np
 import torch
 import argparse
+from itertools import product
 from sklearn.model_selection import train_test_split
 from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_score
-from sklearn.decomposition import PCA
-from sklearn.random_projection import GaussianRandomProjection
-from sklearn.utils import resample
-from sklearn.neighbors import KNeighborsClassifier
-from sklearn.ensemble import GradientBoostingClassifier
-import pandas as pd
-import itertools
-import logging
-import random
-from joblib import Parallel, delayed
-from bayes_opt import BayesianOptimization
-from imblearn.over_sampling import SMOTE
-from sklearn.model_selection import StratifiedShuffleSplit
 
-
-# Includes Boosting which is wrong lol
+# ForestKNN; play with various distances
 
 root_path = "./database"
 
-def setup_logging(dataset_name):
+class ForestKNN:
     """
-    Set up logging for the script.
+    Forest of k-Nearest Neighbors (kNN) classifiers.
     """
-    logger_name = f'forest_knn_logger_{dataset_name}'
-    logger = logging.getLogger(logger_name)
-    
-    if not logger.hasHandlers():
-        logger.setLevel(logging.DEBUG)
-        console_handler = logging.StreamHandler()
-        file_handler = logging.FileHandler(f'{dataset_name}_forest_knn.log')
-        console_handler.setLevel(logging.INFO)
-        file_handler.setLevel(logging.DEBUG)
-        console_formatter = logging.Formatter('%(asctime)s - %(levelname)s - %(message)s')
-        file_formatter = logging.Formatter('%(asctime)s - %(levelname)s - %(message)s')
-        console_handler.setFormatter(console_formatter)
-        file_handler.setFormatter(file_formatter)
-        logger.addHandler(console_handler)
-        logger.addHandler(file_handler)
+    def __init__(self, components=10, k=5, sample_size=0.8, feature_size=0.8, distance_metric='euclidean', device='cuda'):
+        self.components = components
+        self.k = k
+        self.sample_size = sample_size
+        self.feature_size = feature_size
+        self.distance_metric = distance_metric
+        self.device = device
+        self.trees = []
+        self.feature_indices = []
 
-    return logger
+    def fit(self, X, y):
+        """
+        Fits each kNN model on a random subset of the training data and features.
+        """
+        num_samples = int(self.sample_size * X.shape[0])
+        num_features = int(self.feature_size * X.shape[1])
+
+        for i in range(self.components):
+            sample_indices = np.random.choice(X.shape[0], num_samples, replace=True)
+            feature_indices = np.random.choice(X.shape[1], num_features, replace=True)
+            self.feature_indices.append(feature_indices)
+
+            X_subset = X[sample_indices][:, feature_indices]
+            y_subset = y[sample_indices]
+
+            tree = self._fit_knn_model(X_subset, y_subset, self.k)
+            self.trees.append(tree)
+
+    def _fit_knn_model(self, X, y, k):
+        """
+        Train the kNN model with the specified number of neighbors (k).
+        """
+        X_train = torch.tensor(X, device=self.device)
+        y_train = torch.tensor(y, device=self.device)
+        return (X_train, y_train)
+
+    def _compute_distances(self, X, X_train):
+        """
+        Compute distances between X and X_train based on the specified metric.
+        """
+        if self.distance_metric == 'euclidean':
+            return torch.cdist(X, X_train, p=2)
+        elif self.distance_metric == 'manhattan':
+            return torch.cdist(X, X_train, p=1)
+        elif self.distance_metric == 'cosine':
+            X_norm = torch.nn.functional.normalize(X, p=2, dim=1)
+            X_train_norm = torch.nn.functional.normalize(X_train, p=2, dim=1)
+            return 1 - torch.mm(X_norm, X_train_norm.T)
+        elif self.distance_metric == 'chebyshev':
+            return torch.cdist(X, X_train, p=float('inf'))
+        elif self.distance_metric == 'minkowski':
+            p = 3
+            return torch.cdist(X, X_train, p=p)
+        elif self.distance_metric == 'mahalanobis':
+            # For simplicity, assuming identity matrix as inverse covariance matrix
+            VI = torch.eye(X.shape[1], device=self.device)
+            delta = X.unsqueeze(1) - X_train.unsqueeze(0)
+            return torch.sqrt(torch.sum(delta @ VI * delta, dim=-1))
+        elif self.distance_metric == 'hamming':
+            return (X.unsqueeze(1) != X_train.unsqueeze(0)).float().mean(dim=2)
+        elif self.distance_metric == 'canberra':
+            delta = torch.abs(X.unsqueeze(1) - X_train.unsqueeze(0))
+            sum_vals = torch.abs(X.unsqueeze(1)) + torch.abs(X_train.unsqueeze(0))
+            return torch.sum(delta / sum_vals, dim=2)
+        elif self.distance_metric == 'braycurtis':
+            num = torch.sum(torch.abs(X.unsqueeze(1) - X_train.unsqueeze(0)), dim=2)
+            denom = torch.sum(torch.abs(X.unsqueeze(1) + X_train.unsqueeze(0)), dim=2)
+            return num / denom
+        elif self.distance_metric == 'jaccard':
+            intersection = torch.min(X.unsqueeze(1), X_train.unsqueeze(0)).sum(dim=2)
+            union = torch.max(X.unsqueeze(1), X_train.unsqueeze(0)).sum(dim=2)
+            return 1 - intersection / union
+        else:
+            raise ValueError(f"Unknown distance metric: {self.distance_metric}")
+
+
+    def _predict_knn(self, X, X_train, y_train, k):
+        """
+        Predicts the labels for the input data using kNN.
+        """
+        X = torch.tensor(X, device=self.device)
+        distances = self._compute_distances(X, X_train)
+        neighbors = distances.argsort(dim=1)[:, :k]
+        top_labels = y_train[neighbors]
+        predictions = torch.mode(top_labels, dim=1).values
+        return predictions.cpu().numpy()
+
+    def predict(self, X):
+        """
+        Predicts the labels by aggregating the predictions of each kNN model.
+        """
+        predictions = np.zeros((X.shape[0], self.components))
+
+        for i, (X_train, y_train) in enumerate(self.trees):
+            X_subset = X[:, self.feature_indices[i]]
+            predictions[:, i] = self._predict_knn(X_subset, X_train, y_train, self.k)
+
+        final_predictions = np.apply_along_axis(lambda x: np.bincount(x.astype(int)).argmax(), axis=1, arr=predictions)
+        return final_predictions
 
 def load_embeddings_and_labels(dataset_name, root_path):
     """
     Load embeddings and labels for the specified dataset.
     """
     if dataset_name in ["dermamnist", "breastmnist"]:
-        train_data = np.load(os.path.join(root_path, dataset_name, 'train.npz'), mmap_mode='r')
-        val_data = np.load(os.path.join(root_path, dataset_name, 'val.npz'), mmap_mode='r')
-        test_data = np.load(os.path.join(root_path, dataset_name, 'test.npz'), mmap_mode='r')
+        train_data = np.load(os.path.join(root_path, dataset_name, 'train.npz'))
+        val_data = np.load(os.path.join(root_path, dataset_name, 'val.npz'))
+        test_data = np.load(os.path.join(root_path, dataset_name, 'test.npz'))
         X_train, y_train = train_data['embeddings'], train_data['labels'].reshape(-1,)
         X_val, y_val = val_data['embeddings'], val_data['labels'].reshape(-1,)
         X_test, y_test = test_data['embeddings'], test_data['labels'].reshape(-1,)
     else:
-        train_data = np.load(os.path.join(root_path, dataset_name, 'train.npz'), mmap_mode='r')
-        test_data = np.load(os.path.join(root_path, dataset_name, 'test.npz'), mmap_mode='r')
+        train_data = np.load(os.path.join(root_path, dataset_name, 'train.npz'))
+        test_data = np.load(os.path.join(root_path, dataset_name, 'test.npz'))
         X_train, y_train = train_data['embeddings'], train_data['labels'].reshape(-1,)
-        X_train, X_val, y_train, y_val = train_test_split(X_train, y_train, test_size=0.2, random_state=42)
+        X_train, X_val, y_train, y_val = train_test_split(X_train, y_train, test_size=0.2, random_state=None)
         X_test, y_test = test_data['embeddings'], test_data['labels'].reshape(-1,)
     
-    logger.info(f"Loaded dataset {dataset_name} with shapes - X_train: {X_train.shape}, X_val: {X_val.shape}, X_test: {X_test.shape}")
     return X_train, y_train, X_val, y_val, X_test, y_test
 
-def create_bootstrap_sample(X, y, method='bootstrap', random_state=None):
-    """
-    Create a sample from the training data using various sampling methods.
-    """
-    if method == 'bootstrap':
-        return resample(X, y, random_state=random_state)
-    elif method == 'stratified':
-        sss = StratifiedShuffleSplit(n_splits=1, test_size=0.5, random_state=random_state)
-        for train_index, test_index in sss.split(X, y):
-            X_resampled, y_resampled = X[train_index], y[train_index]
-        return X_resampled, y_resampled
-    elif method == 'balanced':
-        class_counts = np.bincount(y)
-        max_count = np.max(class_counts)
-        X_resampled, y_resampled = [], []
-        for class_idx in range(len(class_counts)):
-            class_samples = X[y == class_idx]
-            resampled_class_samples = resample(class_samples, n_samples=max_count, random_state=random_state)
-            X_resampled.append(resampled_class_samples)
-            y_resampled.append(np.full(max_count, class_idx))
-        return np.vstack(X_resampled), np.hstack(y_resampled)
-    elif method == 'smote':
-        smote = SMOTE(random_state=random_state)
-        X_resampled, y_resampled = smote.fit_resample(X, y)
-        return X_resampled, y_resampled
-    elif method == 'oob':
-        bootstrap_samples = resample(np.arange(len(X)), random_state=random_state)
-        oob_samples = np.setdiff1d(np.arange(len(X)), bootstrap_samples)
-        return X[bootstrap_samples], y[bootstrap_samples], X[oob_samples], y[oob_samples]
-    else:
-        raise ValueError("Unknown sampling method.")
 
-
-def apply_projection(X, method='random', n_components=50, random_state=None):
+def evaluate_knn_performance(y_pred, y_true):
     """
-    Apply dimensionality reduction to the data.
+    Evaluate the performance of the kNN model using various metrics.
     """
-    if method == 'random':
-        transformer = GaussianRandomProjection(n_components=n_components, random_state=random_state)
-    elif method == 'pca':
-        transformer = PCA(n_components=n_components, random_state=random_state)
-    X_projected = transformer.fit_transform(X)
-    return X_projected, transformer
+    accuracy = accuracy_score(y_pred, y_true)
+    precision = precision_score(y_pred, y_true, average='weighted', zero_division=0)
+    recall = recall_score(y_pred, y_true, average='weighted', zero_division=0)
+    f1 = f1_score(y_pred, y_true, average='weighted', zero_division=0)
+    return accuracy, precision, recall, f1
 
-def apply_projection_to_test(X_test, transformer):
-    """
-    Apply the same dimensionality reduction to the test data.
-    """
-    return transformer.transform(X_test)
-
-class CustomKNN:
-    """
-    Custom k-Nearest Neighbors (kNN) classifier with GPU support.
-    """
-    def __init__(self, k=5, device='cuda'):
-        self.k = k
-        self.device = device
-
-    def fit(self, X, y):
-        """
-        Fit the kNN model using the training data.
-        """
-        self.X_train = torch.tensor(X, device=self.device)
-        self.y_train = torch.tensor(y, device=self.device)
-
-    def predict(self, X, batch_size=1000):
-        """
-        Predict the labels for the input data using kNN.
-        """
-        X = torch.tensor(X, device=self.device)
-        num_samples = X.shape[0]
-        predictions = []
-        
-        for i in range(0, num_samples, batch_size):
-            batch = X[i:i + batch_size]
-            distances = torch.cdist(batch, self.X_train)
-            neighbors = distances.argsort(dim=1)[:, :self.k]
-            top_labels = self.y_train[neighbors]
-            batch_predictions = torch.mode(top_labels, dim=1).values
-            predictions.append(batch_predictions.cpu().numpy())
-        
-        return np.concatenate(predictions, axis=0)
-
-def bayesian_optimization_knn(X_train, y_train):
-    """
-    Perform Bayesian Optimization to find the best kNN parameters.
-    """
-    def knn_evaluate(n_neighbors, weights_idx, metric_idx):
-        n_neighbors = int(n_neighbors)
-        weights_options = ['uniform', 'distance']
-        metric_options = ['euclidean', 'manhattan', 'chebyshev']
-        weights = weights_options[int(weights_idx)]
-        metric = metric_options[int(metric_idx)]
-        
-        knn = KNeighborsClassifier(n_neighbors=n_neighbors, weights=weights, metric=metric)
-        knn.fit(X_train, y_train)
-        score = knn.score(X_train, y_train)
-        return score
-    
-    pbounds = {
-        'n_neighbors': (10, 20),
-        'weights_idx': (0, 1),
-        'metric_idx': (0, 2)
-    }
-    
-    optimizer = BayesianOptimization(
-        f=knn_evaluate,
-        pbounds=pbounds,
-        random_state=42
-    )
-    optimizer.maximize(init_points=10, n_iter=30)
-    
-    best_params = optimizer.max['params']
-    best_params['n_neighbors'] = int(best_params['n_neighbors'])
-    best_params['weights'] = ['uniform', 'distance'][int(best_params.pop('weights_idx'))]
-    best_params['metric'] = ['euclidean', 'manhattan', 'cosine'][int(best_params.pop('metric_idx'))]
-    
-    best_knn = KNeighborsClassifier(**best_params)
-    best_knn.fit(X_train, y_train)
-    
-    logger.info(f"Best parameters found: {best_params}")
-    
-    return best_knn, best_params
-
-
-def train_boosted_knn(X_train, y_train):
-    """
-    Train a boosted kNN model.
-    """
-    boost_model = GradientBoostingClassifier(n_estimators=50, random_state=42)
-    boost_model.fit(X_train, y_train)
-    return boost_model
-
-def predict_with_ensemble(classifiers, X_test_samples):
-    """
-    Make predictions using an ensemble of classifiers.
-    """
-    predictions = np.zeros((X_test_samples[0].shape[0], len(classifiers)))
-    for i, (clf, X_test) in enumerate(zip(classifiers, X_test_samples)):
-        predictions[:, i] = clf.predict(X_test)
-    final_predictions = np.apply_along_axis(lambda x: np.bincount(x.astype(int)).argmax(), axis=1, arr=predictions)
-    return final_predictions
-
-
-
-def evaluate_and_save_results(classifiers, X_test_samples, y_test, method, n_components, n_classifiers, output_file, best_params, sampling_method, X_oob=None, y_oob=None):
-    """
-    Evaluate the ensemble and save results.
-    """
-    y_pred = predict_with_ensemble(classifiers, X_test_samples)
-    accuracy = accuracy_score(y_test, y_pred)
-    precision = precision_score(y_test, y_pred, average='weighted')
-    recall = recall_score(y_test, y_pred, average='weighted')
-    f1 = f1_score(y_test, y_pred, average='weighted')
-    misclassified_indices = np.where(y_pred != y_test)[0]
-    
-    k = best_params['n_neighbors']
-    boosting_technique = "GradientBoostingClassifier"
-    
-    logger.info(f"Accuracy for method={method}, n_components={n_components}, k={k}, n_classifiers={n_classifiers}, sampling_method={sampling_method}: {accuracy:.4f}")
-    
-    results = {
-        'method': method,
-        'n_components': n_components,
-        'k': k,
-        'n_classifiers': n_classifiers,
-        'best_params': best_params,
-        'accuracy': accuracy,
-        'precision': precision,
-        'recall': recall,
-        'f1_score': f1,
-        'sampling_method': sampling_method,
-        'boosting_technique': boosting_technique,
-        'total_misclassified': len(misclassified_indices),
-        'misclassified_indices': random.sample(list(misclassified_indices), 5) if len(misclassified_indices) > 0 else 'None'
-    }
-
-    # Ensure this header is used only if the file doesn't exist yet
-    header = not os.path.exists(output_file)
-    df = pd.DataFrame([results])
-    df.to_csv(output_file, mode='a', header=header, index=False)
-    logger.info(f"Results saved to {output_file}")
-
-
-
-
-def main_forest_knn(dataset_name):
-    """
-    Main function to run Forest-kNN.
-    """
-    global logger
-    logger = setup_logging(dataset_name)
-    logger.info(f"Starting Forest-kNN on dataset {dataset_name}")
-    
+def main(dataset_name):
+    # Load data
     X_train, y_train, X_val, y_val, X_test, y_test = load_embeddings_and_labels(dataset_name, root_path)
-    
-    output_file = f'{dataset_name}_forest_knn_results.csv'
-    
-    methods = ['random', 'pca']
-    n_components_list = [20, 50, 100]
-    n_classifiers_list = [10, 20, 30]
-    sampling_methods = ['bootstrap', 'stratified', 'balanced', 'smote', 'oob']
-    
-    for method, n_components, n_classifiers, sampling_method in itertools.product(methods, n_components_list, n_classifiers_list, sampling_methods):
-        logger.info(f"\nStarting evaluation for method={method}, n_components={n_components}, n_classifiers={n_classifiers}, sampling_method={sampling_method}...")
-        classifiers = []
-        X_test_samples = []
-        
-        for i in range(n_classifiers):
-            if sampling_method == 'oob':
-                X_sample, y_sample, X_oob, y_oob = create_bootstrap_sample(X_train, y_train, method=sampling_method, random_state=i)
-            else:
-                X_sample, y_sample = create_bootstrap_sample(X_train, y_train, method=sampling_method, random_state=i)
-            
-            X_projected, transformer = apply_projection(X_sample, method=method, n_components=n_components, random_state=i)
-            X_test_projected = apply_projection_to_test(X_test, transformer)
-            
-            if sampling_method == 'oob':
-                X_oob_projected = apply_projection_to_test(X_oob, transformer)
-            
-            logger.info(f"Bootstrap sample {i} shape: {X_sample.shape}, Projected shape: {X_projected.shape}")
-            
-            # Perform Bayesian optimization for the best kNN parameters
-            best_knn, best_params = bayesian_optimization_knn(X_projected, y_sample)
-            # Train boosted kNN model
-            boosted_knn = train_boosted_knn(X_projected, y_sample)
-            classifiers.append(boosted_knn)
-            X_test_samples.append(X_test_projected)
-        
-        if sampling_method == 'oob':
-            evaluate_and_save_results(classifiers, X_test_samples, y_test, method, n_components, n_classifiers, output_file, best_params, sampling_method, X_oob_projected, y_oob)
-        else:
-            evaluate_and_save_results(classifiers, X_test_samples, y_test, method, n_components, n_classifiers, output_file, best_params, sampling_method)
-        logger.info(f"Evaluation completed for method={method}, n_components={n_components}, n_classifiers={n_classifiers}, sampling_method={sampling_method}")
+    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+
+    # Define alternative values for parameters
+    num_trees_list = [5, 10, 20, 25]
+    k_list = [3, 5, 10, 15]
+    sample_size_list = [0.6, 0.8, 1.0]
+    feature_size_list = [0.6, 0.8, 1.0]
+    distance_metric_list = ['euclidean', 'manhattan', 'cosine', 'chebyshev', 'minkowski', 'mahalanobis', 'hamming', 'canberra', 'braycurtis', 'jaccard']
 
 
+    best_val_accuracy = 0
+    best_params = None
+
+    output_file = f"{dataset_name}_forestknn_step3_v4.txt"
+    with open(output_file, "w") as f:
+        f.write("Results:\n")
+
+        for num_trees, k, sample_size, feature_size, distance_metric in product(num_trees_list, k_list, sample_size_list, feature_size_list, distance_metric_list):
+            forest_knn = ForestKNN(components=num_trees, k=k, sample_size=sample_size, feature_size=feature_size, distance_metric=distance_metric, device=device)
+            forest_knn.fit(X_train, y_train)
+
+            y_val_pred = forest_knn.predict(X_val)
+            val_accuracy, val_precision, val_recall, val_f1 = evaluate_knn_performance(y_val_pred, y_val)
+            result_str = f'Validation - Trees: {num_trees}, k: {k}, Sample Size: {sample_size}, Feature Size: {feature_size}, Distance: {distance_metric}, Accuracy: {val_accuracy:.4f}'
+            print(result_str)
+            f.write(result_str + "\n")
+
+            if val_accuracy > best_val_accuracy:
+                best_val_accuracy = val_accuracy
+                best_params = (num_trees, k, sample_size, feature_size, distance_metric)
+
+        best_params_str = f'Best Validation Parameters - Trees: {best_params[0]}, k: {best_params[1]}, Sample Size: {best_params[2]}, Feature Size: {best_params[3]}, Distance: {best_params[4]}, Accuracy: {best_val_accuracy:.4f}'
+        print(best_params_str)
+
+        forest_knn = ForestKNN(components=best_params[0], k=best_params[1], sample_size=best_params[2], feature_size=best_params[3], distance_metric=best_params[4], device=device)
+        forest_knn.fit(X_train, y_train)
+        y_test_pred = forest_knn.predict(X_test)
+        test_accuracy, test_precision, test_recall, test_f1 = evaluate_knn_performance(y_test_pred, y_test)
+        test_results_str = f'Test Accuracy: {test_accuracy:.4f}\nTest Precision: {test_precision:.4f}\nTest Recall: {test_recall:.4f}\nTest F1 Score: {test_f1:.4f}'
+        print(test_results_str)
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="Forest-kNN Classification with PyTorch")
+    parser = argparse.ArgumentParser(description="Forest k-NN with PyTorch")
     parser.add_argument("--dataset", type=str, required=True, choices=["cifar10", "cifar100", "dermamnist", "breastmnist"], help="Dataset to use")
     args = parser.parse_args()
 
     dataset_name = args.dataset
-    logger = setup_logging(dataset_name)
-    logger.info(f"Starting Forest-kNN on dataset {dataset_name}")
-    main_forest_knn(dataset_name)
-    logger.info("Forest-kNN evaluation completed.")
+    main(dataset_name)
