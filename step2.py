@@ -15,7 +15,7 @@ logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(
 
 class CustomKNN:
     """
-    Custom k-Nearest Neighbors (kNN) classifier with GPU support.
+    Sinmple k-Nearest Neighbors classifier
     """
     def __init__(self, k=5, device='cuda'):
         self.k = k
@@ -23,14 +23,14 @@ class CustomKNN:
 
     def fit(self, X, y):
         """
-        Fits the kNN model using the training data.
+        Fits kNN model
         """
         self.X_train = torch.tensor(X, device=self.device)
         self.y_train = torch.tensor(y, device=self.device)
 
     def predict(self, X):
         """
-        Predicts the labels for the input data using kNN.
+        Predicts labels
         """
         X = torch.tensor(X, device=self.device)
         distances = torch.cdist(X, self.X_train)
@@ -38,6 +38,7 @@ class CustomKNN:
         top_labels = self.y_train[neighbors]
         predictions = torch.mode(top_labels, dim=1).values
         return predictions.cpu().numpy()
+    
 
 class LinearProbe(nn.Module):
     def __init__(self, input_dim, num_classes):
@@ -92,9 +93,6 @@ def evaluate_knn_performance(y_pred, y_true):
     return accuracy, precision, recall, f1
 
 def train_linear_probe(X_train, y_train, X_val, y_val, input_dim, num_classes, hyperparams, device):
-    """
-    Train a linear probe on the embeddings with specified hyperparameters.
-    """
     model = LinearProbe(input_dim, num_classes).to(device)
     criterion = nn.CrossEntropyLoss()
     optimizer = optim.Adam(model.parameters(), lr=hyperparams['lr'])
@@ -140,7 +138,7 @@ def evaluate_linear_probe(model, X_test, y_test, device):
     return test_accuracy, test_precision, test_recall, test_f1, misclassified_indices
 
 def main(dataset_name):
-    # Hyperparameters for linear probing
+    # Hyperparameters linear probing
     lrs = [0.001, 0.005]
     batch_sizes = [32, 64]
     epochs_list = [20, 40]

@@ -181,7 +181,7 @@ def main(dataset_name):
     k_values_list = [[1, 3, 5], [3, 5, 7], [5, 7, 9]]
     sample_size_list = [0.6, 0.8, 1.0]
     feature_size_list = [0.6, 0.8, 1.0]
-    distance_metric_list = ['euclidean', 'chebyshev', 'mahalanobis', 'canberra'] # 'manhattan', 'cosine',  'minkowski'.  'hamming',  'braycurtis', 'jaccard'
+    distance_metric_list = ['euclidean', 'cosine', 'chebyshev'] # 'manhattan', 'cosine',  'canberra', 'mahalanobis', 'canberra', 'minkowski'.  'hamming',  'braycurtis', 'jaccard'
 
 
     best_val_accuracy = 0

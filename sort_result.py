@@ -22,7 +22,7 @@ def sort_file_by_accuracy(file_path):
         file.writelines(sorted_lines)
 
 # Specify the path to your file
-file_path = 'breastmnist_forestknn_step3_v4.txt'
+file_path = 'cifar10_forestknn_step3_v5.txt'
 
 # Call the function to sort the file by accuracy
 sort_file_by_accuracy(file_path)

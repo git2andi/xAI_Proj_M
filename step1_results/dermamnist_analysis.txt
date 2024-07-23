@@ -1,0 +1,35 @@
+Dataset: dermamnist
+Total number of samples: 10015
+Number of train samples: 7007
+Train embedding dimensions: 768
+Number of unique train labels: 7
+Train labels distribution:
+  Label 0: 228 samples
+  Label 1: 359 samples
+  Label 2: 769 samples
+  Label 3: 80 samples
+  Label 4: 779 samples
+  Label 5: 4693 samples
+  Label 6: 99 samples
+Number of val samples: 1003
+Val embedding dimensions: 768
+Number of unique val labels: 7
+Val labels distribution:
+  Label 0: 33 samples
+  Label 1: 52 samples
+  Label 2: 110 samples
+  Label 3: 12 samples
+  Label 4: 111 samples
+  Label 5: 671 samples
+  Label 6: 14 samples
+Number of test samples: 2005
+Test embedding dimensions: 768
+Number of unique test labels: 7
+Test labels distribution:
+  Label 0: 66 samples
+  Label 1: 103 samples
+  Label 2: 220 samples
+  Label 3: 23 samples
+  Label 4: 223 samples
+  Label 5: 1341 samples
+  Label 6: 29 samples
