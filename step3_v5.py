@@ -34,7 +34,6 @@ class ForestKNN:
         num_features = int(self.feature_size * X.shape[1])
 
         for i in range(self.components):
-            # Randomly select subsets of samples and features
             sample_indices = np.random.choice(X.shape[0], num_samples, replace=True)
             feature_indices = np.random.choice(X.shape[1], num_features, replace=True)
             self.feature_indices.append(feature_indices)

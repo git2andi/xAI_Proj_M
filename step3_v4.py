@@ -68,7 +68,7 @@ class ForestKNN:
             p = 3
             return torch.cdist(X, X_train, p=p)
         elif self.distance_metric == 'mahalanobis':
-            # For simplicity, assuming identity matrix as inverse covariance matrix
+            # identity matrix is inverse covariance matrix
             VI = torch.eye(X.shape[1], device=self.device)
             delta = X.unsqueeze(1) - X_train.unsqueeze(0)
             return torch.sqrt(torch.sum(delta @ VI * delta, dim=-1))
