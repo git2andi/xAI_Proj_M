@@ -59,7 +59,7 @@ def plot_tsne(embeddings, labels, dataset_name, output_dir, subsample):
 
 
 def plot_image_map(images, labels, dataset_name, output_dir):
-    plt.figure(figsize=(10, 10))  # Adjusted figure size for a 3x3 grid
+    plt.figure(figsize=(10, 10))
     for i in range(9):
         plt.subplot(3, 3, i + 1)
         index = random.randint(0, len(images) - 1)
@@ -77,7 +77,7 @@ def plot_label_distribution(labels, dataset_name, output_dir):
     plt.title(f"{dataset_name.upper()} - Label Distribution")
     plt.xlabel("Label")
     plt.ylabel("Frequency")
-    plt.legend([],[], frameon=False)  # Hide the legend
+    plt.legend([],[], frameon=False)  # Hide legend
     distribution_output_path = f"{output_dir}/{dataset_name}_label_distribution.png"
     plt.savefig(distribution_output_path)
     print(f"Saved label distribution plot to {distribution_output_path}")

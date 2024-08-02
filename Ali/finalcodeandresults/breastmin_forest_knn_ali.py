@@ -4,7 +4,7 @@ import torch
 import torch.nn.functional as F
 import argparse
 from sklearn.model_selection import train_test_split
-from sklearn.metrics import accuracy_score
+from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_score
 from sklearn.decomposition import PCA
 from sklearn.random_projection import GaussianRandomProjection
 from sklearn.utils import resample
@@ -13,7 +13,7 @@ from imblearn.over_sampling import SMOTE
 import time
 from bayes_opt import BayesianOptimization
 
-batch_size=200
+batch_size = 200
 root_path = "./database"
 
 def load_embeddings_and_labels(dataset_name, root_path):
@@ -44,16 +44,8 @@ def stratified_bootstrap_sample(X, y):
         y_resampled.append(y_class_resampled)
     return np.vstack(X_resampled), np.hstack(y_resampled)
 
-def balanced_bootstrap_sample(X, y):
-    unique_classes = np.unique(y)
-    max_class_size = max([np.sum(y == cls) for cls in unique_classes])
-    X_resampled, y_resampled = [], []
-    for cls in unique_classes:
-        X_class, y_class = X[y == cls], y[y == cls]
-        X_class_resampled, y_class_resampled = resample(X_class, y_class, replace=True, n_samples=max_class_size)
-        X_resampled.append(X_class_resampled)
-        y_resampled.append(y_class_resampled)
-    return np.vstack(X_resampled), np.hstack(y_resampled)
+def bootstrap_sample(X, y):
+    return resample(X, y, replace=True)
 
 def out_of_bag_bootstrap_sample(X, y):
     n_samples = len(X)
@@ -141,9 +133,13 @@ def predict_with_ensemble(classifiers, X_test_samples, batch_size=batch_size):
 def evaluate_and_save_results(classifiers, X_test_samples, y_test, method, n_components, variance_threshold, k, n_classifiers, distance_metric, sampling_method, output_file, training_times):
     y_pred = predict_with_ensemble(classifiers, X_test_samples)
     accuracy = accuracy_score(y_test, y_pred)
+    precision = precision_score(y_test, y_pred, average='weighted')
+    recall = recall_score(y_test, y_pred, average='weighted')
+    f1 = f1_score(y_test, y_pred, average='weighted')
     total_training_time = sum(training_times)
     
     print(f"Accuracy for method={method}, n_components={n_components}, variance_threshold={variance_threshold}, k={k}, n_classifiers={n_classifiers}, distance_metric={distance_metric}, sampling_method={sampling_method}: {accuracy:.4f}")
+    print(f"Precision: {precision:.4f}, Recall: {recall:.4f}, F1 Score: {f1:.4f}")
     print(f"Total training time: {total_training_time:.3f} seconds")
 
     results = {
@@ -155,14 +151,13 @@ def evaluate_and_save_results(classifiers, X_test_samples, y_test, method, n_com
         'distance_metric': distance_metric,
         'sampling_method': sampling_method,
         'accuracy': accuracy,
+        'precision': precision,
+        'recall': recall,
+        'f1_score': f1,
         'training_time_seconds': round(total_training_time, 3)
     }
 
-    print(f"Results: {results}")
-    
     df = pd.DataFrame([results])
-    print(f"DataFrame to be saved:\n{df}")
-
     df.to_csv(output_file, mode='a', header=not os.path.exists(output_file), index=False)
     print(f"Results saved to {output_file}")
 
@@ -174,13 +169,13 @@ def bayesian_optimization():
         'k': [3, 5, 10],
         'n_classifiers': [10, 20, 30],
         'distance_metric': [0, 1, 2],  # 0 for 'euclidean', 1 for 'manhattan', 2 for 'cosine'
-        'sampling_method': [0, 1, 2, 3]  # 0 for 'stratified', 1 for 'balanced', 2 for 'oob', 3 for 'smote'
+        'sampling_method': [0, 1, 2, 3, 4]  # 0 for 'stratified', 1 for 'bootstrap', 2 for 'oob', 3 for 'smote'
     }
 
     def evaluate_model(method, n_components, variance_threshold, k, n_classifiers, distance_metric, sampling_method):
         method = ['random', 'pca'][int(method)]
         distance_metric = ['euclidean', 'manhattan', 'cosine'][int(distance_metric)]
-        sampling_method = ['stratified', 'balanced', 'oob', 'smote'][int(sampling_method)]
+        sampling_method = ['stratified', 'bootstrap', 'oob', 'smote'][int(sampling_method)]
         
         classifiers = []
         X_val_samples = []
@@ -190,8 +185,8 @@ def bayesian_optimization():
         for i in range(int(n_classifiers)):
             if sampling_method == 'stratified':
                 X_sample, y_sample = stratified_bootstrap_sample(X_train, y_train)
-            elif sampling_method == 'balanced':
-                X_sample, y_sample = balanced_bootstrap_sample(X_train, y_train)
+            elif sampling_method == 'bootstrap':
+                X_sample, y_sample = bootstrap_sample(X_train, y_train)
             elif sampling_method == 'oob':
                 X_sample, y_sample, _, _ = out_of_bag_bootstrap_sample(X_train, y_train)
             elif sampling_method == 'smote':
@@ -211,20 +206,42 @@ def bayesian_optimization():
 
         y_pred = predict_with_ensemble(classifiers, X_test_samples)
         accuracy = accuracy_score(y_test, y_pred)
+        precision = precision_score(y_test, y_pred, average='weighted')
+        recall = recall_score(y_test, y_pred, average='weighted')
+        f1 = f1_score(y_test, y_pred, average='weighted')
         total_training_time = sum(training_times)
+
+        # Save intermediate results
+        output_file = f'{dataset_name}_forest_knn_results.csv'
+        results = {
+            'method': method,
+            'n_components': int(n_components),
+            'variance_threshold': float(variance_threshold),
+            'k': int(k),
+            'n_classifiers': int(n_classifiers),
+            'distance_metric': distance_metric,
+            'sampling_method': sampling_method,
+            'accuracy': accuracy,
+            'precision': precision,
+            'recall': recall,
+            'f1_score': f1,
+            'training_time_seconds': round(total_training_time, 3)
+        }
+        df = pd.DataFrame([results])
+        df.to_csv(output_file, mode='a', header=not os.path.exists(output_file), index=False)
 
         return accuracy
 
     optimizer = BayesianOptimization(
         f=evaluate_model,
         pbounds={
-            'method': (0, 1),
+            'Projection_method': (0, 1),
             'n_components': (50, 150),
             'variance_threshold': (0.9, 0.99),
             'k': (3, 10),
             'n_classifiers': (10, 30),
             'distance_metric': (0, 2),
-            'sampling_method': (0, 3)
+            'sampling_method': (0, 2)
         },
         random_state=42,
     )
@@ -239,9 +256,7 @@ def bayesian_optimization():
 
     best_params['method'] = ['random', 'pca'][int(best_params['method'])]
     best_params['distance_metric'] = ['euclidean', 'manhattan', 'cosine'][int(best_params['distance_metric'])]
-    best_params['sampling_method'] = ['stratified', 'balanced', 'oob', 'smote'][int(best_params['sampling_method'])]
-
-    total_training_time = sum([res['target'][1] for res in optimizer.res if res['params'] == best_params])
+    best_params['sampling_method'] = ['stratified', 'bootstrap', 'oob', 'smote'][int(best_params['sampling_method'])]
 
     output_file = f'{dataset_name}_forest_knn_results.csv'
 
@@ -253,8 +268,7 @@ def bayesian_optimization():
         'n_classifiers': int(best_params['n_classifiers']),
         'distance_metric': best_params['distance_metric'],
         'sampling_method': best_params['sampling_method'],
-        'accuracy': best_accuracy,
-        'training_time_seconds': round(total_training_time, 3)
+        'accuracy': best_accuracy
     }
 
     df = pd.DataFrame([results])
@@ -272,5 +286,10 @@ if __name__ == "__main__":
     print(f"Starting Forest-kNN on dataset {dataset_name}")
 
     X_train, y_train, X_val, y_val, X_test, y_test = load_embeddings_and_labels(dataset_name, root_path)
-    bayesian_optimization()
+
+    for i in range(5):
+        print(f"Run {i+1}/5")
+    
+        bayesian_optimization()
+ 
     print("Forest-kNN evaluation completed.")
