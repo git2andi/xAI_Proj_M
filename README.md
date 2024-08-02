@@ -3,67 +3,35 @@
 
 This project explores the latent space of different datasets using t-SNE, evaluates the performance of a k-Nearest Neighbour (k-NN) classifier, and trains a Linear Probing model on the embeddings. The project consists of two main parts: k-NN classification and Linear Probing. The results are summarized and saved for further analysis.
 
-## Project Structure
-
-```
-.
-├── database
-│   ├── cifar10
-│   │   ├── train.npz
-│   │   ├── test.npz
-│   ├── cifar100
-│   │   ├── train.npz
-│   │   ├── test.npz
-│   ├── dermamnist
-│   │   ├── train.npz
-│   │   ├── test.npz
-│   ├── breastmnist
-│       ├── train.npz
-│       ├── test.npz
-├── images
-│   ├── (generated images will be saved here)
-├── knn.py
-├── linear_probing.py
-├── requirements.txt
-├── README.md
-```
-
 
 ## Usage
-### Dataset anaylsis
+### Step 1
 1. Run the script:
 
 ```sh
-python main.py --dataset cifar10
-python main.py --dataset cifar100
-python main.py --dataset dermamnist
-python main.py --dataset breastmnist
-
-python main.py --dataset cifar10 --full         # Work with the full dataset
-python main.py --dataset cifar10 --subsampled   # Work with every 10th file 
+python step1.py --dataset cifar10 # cifar100, dermamnist, breastmnist
+python step1.py --dataset cifar10 --subsample  # Add if required 
+python step1_dataset.py --dataset cifar10
 ```
 
-### k-Nearest Neighbour (k-NN) Classification
+### k-Nearest Neighbour (k-NN) Classification vs Linear Layer
 
 1. Run the k-NN script:
 
 ```sh
-python knn.py --dataset cifar10
-python knn.py --dataset breastmnist
+python step2.py --dataset cifar10   # no subsample here possible
 ```
 
-2. The results will be saved in a text file named according to the dataset, e.g., `cifar10_results.txt`.
+### ForestKNN
 
-### Linear Probing
-
-1. Run the Linear Probing script:
+1. Run the k-NN script:
 
 ```sh
-python linear_probing.py --dataset cifar10
-python linear_probing.py --dataset breastmnist
+python step3_v1.py --dataset cifar10   # no subsample aswell; adapt version
 ```
 
-2. The results will be saved in a text file named according to the dataset, e.g., `cifar10_linear_probing_results.txt`.
+
+2. The results will be saved in the respective step1, step2 or step3 results folder
 
 
 ## License
